@@ -662,19 +662,28 @@ body {
 }
 .sst.active { background: #1e1e32; color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
 
-/* My shifts horizontal strip */
-.my-shifts-scroll { overflow-x: auto; padding: 0 1rem 0.5rem; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
-.my-shifts-scroll::-webkit-scrollbar { display: none; }
-.my-shifts-strip { display: flex; gap: 0.45rem; padding: 0.5rem 0; width: max-content; }
+/* My shifts calendar grid */
+.my-shifts-scroll { padding: 0 1rem 0.5rem; }
+.sched-dow-row {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  padding: 0.5rem 1rem 0.2rem;
+}
+.sched-dow-row span {
+  text-align: center; font-size: 0.48rem; font-weight: 700;
+  color: rgba(255,255,255,0.28); text-transform: uppercase; letter-spacing: 0.06em;
+}
+.sched-dow-row span.wknd { color: rgba(245,64,41,0.45); }
+.my-shifts-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; padding: 0.2rem 0 0.4rem; }
+.day-card-empty { border-radius: 8px; }
 .day-card {
-  width: 52px; border-radius: 12px; padding: 0.45rem 0.3rem 0.4rem;
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
-  border: 1.5px solid rgba(255,255,255,0.1); flex-shrink: 0;
+  border-radius: 8px; padding: 0.28rem 0.1rem 0.3rem;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  border: 1.5px solid rgba(255,255,255,0.1);
 }
 .day-card.today { border-color: rgba(245,64,41,0.5); box-shadow: 0 0 0 1px rgba(245,64,41,0.2); }
-.dc-dow { font-size: 0.5rem; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,255,255,0.4); }
-.dc-num { font-size: 1rem; font-weight: 800; color: #fff; line-height: 1; }
-.dc-shift { font-size: 0.58rem; font-weight: 700; color: rgba(255,255,255,0.85); margin-top: 2px; }
+.dc-dow { font-size: 0.42rem; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(255,255,255,0.35); }
+.dc-num { font-size: 0.82rem; font-weight: 800; color: #fff; line-height: 1; }
+.dc-shift { font-size: 0.5rem; font-weight: 700; color: rgba(255,255,255,0.85); margin-top: 1px; }
 .day-card.off { background: rgba(195,35,35,0.7); border-color: rgba(255,80,80,0.25); }
 .day-card.off .dc-shift { font-size: 0.44rem; text-transform: uppercase; letter-spacing: 0.07em; color: rgba(255,200,200,0.9); }
 .day-card.bar    { background: rgba(60,155,90,0.82); border-color: rgba(100,210,130,0.3); }
@@ -684,14 +693,14 @@ body {
 .day-card.vac    { background: rgba(0,160,160,0.35); border-color: rgba(0,200,200,0.3); }
 .day-card.vac .dc-shift { color: rgba(180,255,255,0.9); font-size: 0.44rem; text-transform: uppercase; letter-spacing: 0.07em; }
 
-/* Full table */
-.full-table-wrap {
-  overflow-x: auto; padding: 0 0 0.5rem;
-  -webkit-overflow-scrolling: touch; margin-top: 0.2rem;
-  overscroll-behavior: contain;
+/* Full table — no horizontal scroll, split into two halves */
+.full-table-wrap { padding: 0 0 0.5rem; margin-top: 0.2rem; }
+.full-table-half-label {
+  font-size: 0.52rem; font-weight: 700; color: rgba(255,255,255,0.25);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0.6rem 1rem 0.2rem;
 }
-.full-table-wrap::-webkit-scrollbar { display: none; }
-.full-table { border-collapse: collapse; font-size: 0.6rem; white-space: nowrap; }
+.full-table { border-collapse: collapse; font-size: 0.56rem; white-space: nowrap; table-layout: fixed; width: 100%; }
 .full-table th, .full-table td { padding: 0; }
 .ft-name-col {
   position: sticky; left: 0; z-index: 2;
@@ -935,12 +944,19 @@ body {
         <!-- Входящие запросы на обмен -->
         <div id="swap-requests-section"></div>
 
+        <!-- DOW header + grid -->
+        <div class="sched-dow-row">
+          <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="wknd">Сб</span><span class="wknd">Вс</span>
+        </div>
         <div class="my-shifts-scroll">
           <div class="my-shifts-strip" id="my-strip"></div>
         </div>
         <div id="sched-prev-section" style="display:none;">
           <div class="section" style="margin-top:0.9rem;">
             <div class="s-label" id="sched-prev-label"></div>
+          </div>
+          <div class="sched-dow-row">
+            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="wknd">Сб</span><span class="wknd">Вс</span>
           </div>
           <div class="my-shifts-scroll">
             <div class="my-shifts-strip" id="my-strip-sep"></div>
@@ -951,10 +967,13 @@ body {
       <!-- FULL TABLE -->
       <div id="sub-all" style="display:none;">
         <div class="section" style="padding-top:0.8rem;">
-          <div class="s-label">Август 2026 — весь зал</div>
+          <div class="s-label" id="full-table-title">Весь зал</div>
         </div>
         <div class="full-table-wrap">
-          <table class="full-table" id="full-table"></table>
+          <div class="full-table-half-label" id="full-table-label-a">1–15</div>
+          <table class="full-table" id="full-table-a"></table>
+          <div class="full-table-half-label" id="full-table-label-b">16–31</div>
+          <table class="full-table" id="full-table-b"></table>
         </div>
       </div>
 
@@ -1196,66 +1215,64 @@ function ftZoneClass(zone) {
   return zone === 'бар' ? 'ft-bar' : zone === 'мангал' ? 'ft-mangal' : zone === 'печка' ? 'ft-pechka' : zone === 'лифт' ? 'ft-lift' : '';
 }
 
-// ── RENDER MY SHIFTS ──
+// ── RENDER MY SHIFTS (calendar grid, no horizontal scroll) ──
 function renderMyStrip(containerId, data, dowFn, totalDays) {
   const el = document.getElementById(containerId);
   let html = '';
   const today = 27; // simulated today = Aug 27
+  // Leading empty cells (Mon-first: Mon=0..Sun=6)
+  const firstDow = dowFn(1); // 0=Вс,1=Пн..6=Сб
+  const leadingEmpty = firstDow === 0 ? 6 : firstDow - 1;
+  for (let i = 0; i < leadingEmpty; i++) html += '<div class="day-card-empty"></div>';
   for (let d = 1; d <= totalDays; d++) {
     const s = data[d];
-    const dow = DOW[dowFn(d)];
     const isToday = containerId === 'my-strip' && d === today;
     if (s.type === 'off') {
       html += `<div class="day-card off${isToday?' today':''}">
-        <div class="dc-dow">${dow}</div><div class="dc-num">${d}</div>
-        <div class="dc-shift">вых</div></div>`;
+        <div class="dc-num">${d}</div>
+        <div class="dc-shift">—</div></div>`;
     } else {
       const cls = zoneClass(s.zone);
       html += `<div class="day-card ${cls}${isToday?' today':''}">
-        <div class="dc-dow">${dow}</div><div class="dc-num">${d}</div>
+        <div class="dc-num">${d}</div>
         <div class="dc-shift">${s.type}</div></div>`;
     }
   }
   el.innerHTML = html;
-  // scroll to today
-  if (containerId === 'my-strip') {
-    setTimeout(() => {
-      const cards = el.querySelectorAll('.day-card');
-      const todayCard = cards[today - 1];
-      if (todayCard) todayCard.scrollIntoView({ inline: 'center', behavior: 'smooth' });
-    }, 100);
-  }
 }
 
-// ── RENDER FULL TABLE ──
+// ── RENDER FULL TABLE — split into two halves (no horizontal scroll) ──
 function renderFullTable() {
-  const SHOW_DAYS = 20; // show first 20 days to keep it readable
-  const el = document.getElementById('full-table');
-  let html = '<thead><tr>';
-  html += `<th class="ft-head-name">Сотрудник</th>`;
-  for (let d = 1; d <= SHOW_DAYS; d++) {
-    const dow = dowAug(d);
-    const isWknd = dow === 0 || dow === 6;
-    html += `<th class="ft-head-day${isWknd?' wknd':''}">${d}</th>`;
-  }
-  html += '</tr></thead><tbody>';
-
-  TABLE_EMPS.forEach(emp => {
-    html += `<tr class="ft-row${emp.me?' ft-row-me':''}">`;
-    html += `<td class="ft-name-col">${emp.name}</td>`;
-    for (let d = 1; d <= SHOW_DAYS; d++) {
-      const s = emp.shifts[d];
-      if (s.type === 'off') {
-        html += `<td class="ft-cell ft-off">·</td>`;
-      } else {
-        const cls = ftZoneClass(s.zone);
-        html += `<td class="ft-cell ${cls}">${s.type}</td>`;
-      }
+  function buildHalf(elId, fromDay, toDay) {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    let html = '<thead><tr>';
+    html += `<th class="ft-head-name">Сотрудник</th>`;
+    for (let d = fromDay; d <= toDay; d++) {
+      const dow = dowAug(d);
+      const isWknd = dow === 0 || dow === 6;
+      html += `<th class="ft-head-day${isWknd?' wknd':''}">${d}</th>`;
     }
-    html += '</tr>';
-  });
-  html += '</tbody>';
-  el.innerHTML = html;
+    html += '</tr></thead><tbody>';
+    TABLE_EMPS.forEach(emp => {
+      html += `<tr class="ft-row${emp.me?' ft-row-me':''}">`;
+      html += `<td class="ft-name-col">${emp.name.split(' ')[0]}</td>`;
+      for (let d = fromDay; d <= toDay; d++) {
+        const s = emp.shifts[d];
+        if (s.type === 'off') {
+          html += `<td class="ft-cell ft-off">·</td>`;
+        } else {
+          const cls = ftZoneClass(s.zone);
+          html += `<td class="ft-cell ${cls}">${s.type}</td>`;
+        }
+      }
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    el.innerHTML = html;
+  }
+  buildHalf('full-table-a', 1, 15);
+  buildHalf('full-table-b', 16, 31);
 }
 
 // ── SUBTABS ──
@@ -2201,32 +2218,33 @@ function restoreSession() {
 loadEmployeesFromFirebase();
 loadEventsFromFirestore();
 
-// Рендер полосы из Firebase-данных
+// Рендер сетки-календаря из Firebase-данных (без горизонтального скролла)
 function renderMyStripFirebase(containerId, days, dowFn, startDay, endDay) {
   const el = document.getElementById(containerId);
   if (!el) return;
   const todayDate = new Date().getDate();
   const vacSet = new Set(currentEmployee?.vacationDays || []);
   let html = '';
+  // Ведущие пустые ячейки (Пн=0..Вс=6, getDay: 0=Вс)
+  const firstDowJs = dowFn(startDay); // 0=Sun,1=Mon..6=Sat
+  const leadingEmpty = (firstDowJs + 6) % 7; // Mon-first
+  for (let i = 0; i < leadingEmpty; i++) html += '<div class="day-card-empty"></div>';
   for (let d = startDay; d <= endDay; d++) {
-    const dow = DOW[dowFn(d)];
     const isToday = d === todayDate;
-    // Отпуск
     if (vacSet.has(d)) {
       html += `<div class="day-card vac${isToday?' today':''}">
-        <div class="dc-dow">${dow}</div><div class="dc-num">${d}</div>
+        <div class="dc-num">${d}</div>
         <div class="dc-shift">отп</div></div>`;
       continue;
     }
     const v = days[d] || 'off';
     if (v === 'off' || !v) {
       html += `<div class="day-card off${isToday?' today':''}">
-        <div class="dc-dow">${dow}</div><div class="dc-num">${d}</div>
+        <div class="dc-num">${d}</div>
         <div class="dc-shift">—</div></div>`;
     } else {
       const parts = v.split('/');
       let shift = parts[0];
-      // Авто-суффикс для вечерней смены по дню недели
       if (shift === 'В') {
         const _dow = dowFn(d);
         shift = _dow === 5 ? 'В16' : (_dow === 0 || _dow === 6) ? 'В15' : 'В18';
@@ -2235,15 +2253,15 @@ function renderMyStripFirebase(containerId, days, dowFn, startDay, endDay) {
       const zc = zoneClass(zone);
       const rawShift = v.replace(/'/g, "\\'");
       html += `<div class="day-card work${zc?' '+zc:''}${isToday?' today':''}" onclick="openSwapSheet(${d},'${rawShift}')">
-        <div class="dc-dow">${dow}</div><div class="dc-num">${d}</div>
+        <div class="dc-num">${d}</div>
         <div class="dc-shift">${shift}${zone?`<div class="dc-zone">${zone}</div>`:''}</div></div>`;
     }
   }
   el.innerHTML = html;
+  // Скроллим к сегодня вертикально
   setTimeout(() => {
-    const cards = el.querySelectorAll('.day-card');
-    const idx = todayDate - startDay;
-    if (cards[idx]) cards[idx].scrollIntoView({ inline:'center', behavior:'smooth' });
+    const todayCard = el.querySelector('.day-card.today');
+    if (todayCard) todayCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, 100);
 }
 
