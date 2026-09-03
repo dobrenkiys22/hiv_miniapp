@@ -728,15 +728,40 @@ body {
   border-bottom: 1px solid rgba(255,255,255,0.04);
   font-weight: 700; color: rgba(255,255,255,0.85); min-width: 28px;
 }
-.ft-cell.ft-bar    { color: #F54029; }
-.ft-cell.ft-mangal { color: #f0836a; }
-.ft-cell.ft-pechka { color: #f5c842; }
-.ft-cell.ft-lift   { color: #8ab4f8; }
-.ft-cell.ft-off    { color: rgba(255,255,255,0.15); }
+.ft-cell           { color: rgba(255,255,255,0.7); }
+.ft-cell.ft-z-bar    { color: #4caf7d; }   /* зеленый — бар */
+.ft-cell.ft-z-lift   { color: #8ab4f8; }   /* синий — лифт */
+.ft-cell.ft-z-pechka { color: #f5a83e; }   /* оранжевый — печка */
+.ft-cell.ft-z-mangal { color: #F54029; }   /* красный — мангал */
+.ft-cell.ft-off      { color: rgba(255,255,255,0.13); }
 .ft-row:nth-child(even) .ft-name-col,
-.ft-row:nth-child(even) .ft-cell { background: rgba(255,255,255,0.02); }
+.ft-row:nth-child(even) .ft-cell { background: rgba(255,255,255,0.015); }
 .ft-row-me .ft-name-col { color: #F54029; font-weight: 800; }
 .ft-row-me .ft-cell { background: rgba(233,69,96,0.06) !important; }
+.ft-group-header {
+  font-size: 0.48rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgba(255,255,255,0.25); background: rgba(255,255,255,0.03);
+  padding: 0.28rem 1rem; border-top: 1px solid rgba(255,255,255,0.06);
+}
+/* ── NEXT SHIFT COMPOSITION TAB ── */
+.nsc-date { font-size: 0.7rem; color: rgba(255,255,255,0.35); margin-top: 0.15rem; }
+.nsc-group {
+  padding: 0.55rem 1rem 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  display: flex; flex-direction: column; gap: 0.2rem;
+}
+.nsc-shift-row { display: flex; align-items: baseline; gap: 0.5rem; }
+.nsc-shift-label {
+  font-size: 0.72rem; font-weight: 800; color: #F54029;
+  min-width: 2.8rem; flex-shrink: 0;
+}
+.nsc-names { font-size: 0.8rem; color: rgba(255,255,255,0.82); line-height: 1.4; }
+.nsc-runners { font-size: 0.68rem; color: rgba(255,255,255,0.38); margin-top: 0.05rem; padding-left: 3.3rem; }
+.nsc-myshift {
+  padding: 0.7rem 1rem; margin-top: 0.2rem;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 0.65rem; color: rgba(255,255,255,0.3);
+}
 
 /* ── ANIMATE ── */
 @keyframes ringDraw {
@@ -932,6 +957,7 @@ body {
       <!-- Sub-tabs -->
       <div class="sched-subtabs">
         <button class="sst active" id="sst-mine" onclick="switchSub('mine')">Мои смены</button>
+        <button class="sst" id="sst-next" onclick="switchSub('next')">Состав смены</button>
         <button class="sst" id="sst-all" onclick="switchSub('all')">Весь зал</button>
       </div>
 
@@ -963,6 +989,9 @@ body {
           </div>
         </div>
       </div>
+
+      <!-- NEXT SHIFT COMPOSITION -->
+      <div id="sub-next" style="display:none;"></div>
 
       <!-- FULL TABLE -->
       <div id="sub-all" style="display:none;">
@@ -1241,29 +1270,87 @@ function renderMyStrip(containerId, data, dowFn, totalDays) {
   el.innerHTML = html;
 }
 
-// ── RENDER FULL TABLE — split into two halves (no horizontal scroll) ──
+// ── HELPERS ──
+function zoneKey(zone) {
+  if (!zone) return '';
+  const z = (zone || '').toLowerCase();
+  if (z === 'бар')    return 'bar';
+  if (z === 'лифт')   return 'lift';
+  if (z === 'печка')  return 'pechka';
+  if (z === 'мангал') return 'mangal';
+  return '';
+}
+// Группа сотрудника: 'pro' | 'waiter' | 'runner'
+const RUNNER_IDS_FALLBACK = new Set(['kirill_igoshin','ilya_proshkin','aytan_shavartaev','nastya_kuznetsova','alex_ivanov','varvara_rytikova','ilya_morozov','mikula_beltsov','marina_sadretdinova','artem_pavlov','ivan_ignatev','vlad_kromov']);
+function empGroup(emp) {
+  const d = (emp.dept || '').toLowerCase().trim();
+  if (d === 'раннер' || d === 'runner') return 'runner';
+  if (d === 'про' || d === 'pro')       return 'pro';
+  if (d === 'официант' || d === 'waiter') return 'waiter';
+  if (d) return 'waiter'; // любой другой dept — официанты
+  // Фоллбек по известным ID
+  if (RUNNER_IDS_FALLBACK.has(emp.id)) return 'runner';
+  return 'waiter';
+}
+
+// ── RENDER FULL TABLE (Firebase-данные, без горизонтального скролла) ──
 function renderFullTable() {
-  function buildHalf(elId, fromDay, toDay) {
+  const titleEl = document.getElementById('full-table-title');
+  if (!_swapSchedCells || !_swapSchedMeta) {
+    const el = document.getElementById('full-table-a');
+    if (el) el.innerHTML = '';
+    const el2 = document.getElementById('full-table-b');
+    if (el2) el2.innerHTML = '';
+    if (titleEl) titleEl.textContent = 'Весь зал — загрузка…';
+    return;
+  }
+  const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
+  if (titleEl) titleEl.textContent = `Весь зал — ${month} ${year}`;
+
+  // Группируем всех сотрудников
+  const grouped = { pro: [], waiter: [], runner: [] };
+  EMPLOYEES.forEach(emp => { const g = empGroup(emp); grouped[g].push(emp); });
+  const allEmps = [...grouped.pro, ...grouped.waiter, ...grouped.runner];
+
+  function buildHalf(elId, labelElId, fromDay, toDay) {
     const el = document.getElementById(elId);
+    const lEl = document.getElementById(labelElId);
     if (!el) return;
-    let html = '<thead><tr>';
-    html += `<th class="ft-head-name">Сотрудник</th>`;
+    if (lEl) {
+      lEl.textContent = `${fromDay}–${toDay}`;
+      lEl.style.display = '';
+    }
+    el.style.display = '';
+    const cols = toDay - fromDay + 1;
+    let html = `<colgroup><col style="width:20%">${'<col>'.repeat(cols)}</colgroup>`;
+    html += '<thead><tr>';
+    html += `<th class="ft-head-name">Имя</th>`;
     for (let d = fromDay; d <= toDay; d++) {
-      const dow = dowAug(d);
+      const dow = new Date(year, monthIdx, d).getDay();
       const isWknd = dow === 0 || dow === 6;
       html += `<th class="ft-head-day${isWknd?' wknd':''}">${d}</th>`;
     }
     html += '</tr></thead><tbody>';
-    TABLE_EMPS.forEach(emp => {
-      html += `<tr class="ft-row${emp.me?' ft-row-me':''}">`;
-      html += `<td class="ft-name-col">${emp.name.split(' ')[0]}</td>`;
+    let lastGroup = null;
+    allEmps.forEach(emp => {
+      const g = empGroup(emp);
+      if (g !== lastGroup) {
+        const label = g === 'pro' ? 'ПРО' : g === 'waiter' ? 'Официанты' : 'Раннеры';
+        html += `<tr><td class="ft-group-header" colspan="${cols + 1}">${label}</td></tr>`;
+        lastGroup = g;
+      }
+      const isMe = emp.id === currentEmployee?.id;
+      html += `<tr class="ft-row${isMe?' ft-row-me':''}">`;
+      html += `<td class="ft-name-col">${emp.name}</td>`;
       for (let d = fromDay; d <= toDay; d++) {
-        const s = emp.shifts[d];
-        if (s.type === 'off') {
+        const val = ((_swapSchedCells[emp.id] || {}).days || {})[d] || '';
+        if (!val || val === 'off') {
           html += `<td class="ft-cell ft-off">·</td>`;
         } else {
-          const cls = ftZoneClass(s.zone);
-          html += `<td class="ft-cell ${cls}">${s.type}</td>`;
+          const parts = val.split('/');
+          const shift = parts[0]; const zone = parts[1] || null;
+          const cls = zone ? 'ft-z-' + zoneKey(zone) : '';
+          html += `<td class="ft-cell ${cls}">${shift}</td>`;
         }
       }
       html += '</tr>';
@@ -1271,17 +1358,101 @@ function renderFullTable() {
     html += '</tbody>';
     el.innerHTML = html;
   }
-  buildHalf('full-table-a', 1, 15);
-  buildHalf('full-table-b', 16, 31);
+
+  const totalDays = periodEnd - periodStart + 1;
+  if (totalDays > 15) {
+    const mid = periodStart + Math.floor(totalDays / 2) - 1;
+    buildHalf('full-table-a', 'full-table-label-a', periodStart, mid);
+    buildHalf('full-table-b', 'full-table-label-b', mid + 1, periodEnd);
+  } else {
+    // Один период — скрываем вторую половину
+    buildHalf('full-table-a', 'full-table-label-a', periodStart, periodEnd);
+    const lbEl = document.getElementById('full-table-label-b');
+    const tbEl = document.getElementById('full-table-b');
+    if (lbEl) lbEl.style.display = 'none';
+    if (tbEl) tbEl.style.display = 'none';
+  }
+}
+
+// ── СОСТАВ СЛЕДУЮЩЕЙ СМЕНЫ ──
+function renderNextShiftComposition() {
+  const el = document.getElementById('sub-next');
+  if (!el) return;
+  if (!currentEmployee || !_swapSchedCells || !_swapSchedMeta) {
+    el.innerHTML = `<div style="padding:2rem 1rem;text-align:center;color:rgba(255,255,255,0.3);font-size:0.82rem;">Расписание загружается…</div>`;
+    return;
+  }
+  const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
+  const myDays = ((_swapSchedCells[currentEmployee.id] || {}).days) || {};
+
+  // Ищем следующую рабочую смену
+  const today = new Date().getDate();
+  let nextDay = null; let myShiftVal = null;
+  for (let d = Math.max(today, periodStart); d <= periodEnd; d++) {
+    const v = myDays[d];
+    if (v && v !== 'off') { nextDay = d; myShiftVal = v; break; }
+  }
+  if (!nextDay) {
+    el.innerHTML = `<div style="padding:2rem 1rem;text-align:center;color:rgba(255,255,255,0.3);font-size:0.82rem;">Смен в текущем периоде нет</div>`;
+    return;
+  }
+
+  // Все коллеги в эту смену — группируем по типу смены
+  const shiftMap = {}; // { 'У': { pro: [...], waiter: [...], runner: [...] } }
+  EMPLOYEES.forEach(emp => {
+    if (emp.id === currentEmployee.id) return;
+    const val = ((_swapSchedCells[emp.id] || {}).days || {})[nextDay] || '';
+    if (!val || val === 'off') return;
+    const shift = val.split('/')[0];
+    if (!shiftMap[shift]) shiftMap[shift] = { pro: [], waiter: [], runner: [] };
+    shiftMap[shift][empGroup(emp)].push(emp.name);
+  });
+
+  const SHIFT_ORDER = ['У','Д12','В15','В16','В18'];
+  const sortedShifts = Object.keys(shiftMap).sort((a, b) => {
+    const ai = SHIFT_ORDER.indexOf(a), bi = SHIFT_ORDER.indexOf(b);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+  });
+
+  const MONTH_NAMES = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const DOW_ACC = ['воскресенье','понедельник','вторник','среду','четверг','пятницу','субботу'];
+  const dow = new Date(year, monthIdx, nextDay).getDay();
+  const dateStr = `${nextDay} ${MONTH_NAMES[monthIdx]}, ${DOW_ACC[dow]}`;
+
+  let html = `<div style="padding:0.8rem 1rem 0.3rem">
+    <div class="s-label">Состав смены</div>
+    <div class="nsc-date">${dateStr}</div>
+  </div>`;
+
+  if (!sortedShifts.length) {
+    html += `<div style="padding:1.5rem 1rem;color:rgba(255,255,255,0.3);font-size:0.82rem;">Нет данных о коллегах</div>`;
+  } else {
+    sortedShifts.forEach(shift => {
+      const g = shiftMap[shift];
+      const staff = [...g.pro, ...g.waiter];
+      const runners = g.runner;
+      html += `<div class="nsc-group"><div class="nsc-shift-row">`;
+      html += `<span class="nsc-shift-label">${shift}</span>`;
+      html += `<span class="nsc-names">${staff.length ? staff.join(', ') : (runners.length ? '' : '—')}</span>`;
+      html += `</div>`;
+      if (runners.length) html += `<div class="nsc-runners">Раннеры: ${runners.join(', ')}</div>`;
+      html += `</div>`;
+    });
+  }
+
+  const myShiftType = myShiftVal.split('/')[0];
+  html += `<div class="nsc-myshift">Твоя смена: <span style="color:#F54029;font-weight:700">${myShiftType}</span></div>`;
+  el.innerHTML = html;
 }
 
 // ── SUBTABS ──
 function switchSub(id) {
-  document.getElementById('sub-mine').style.display = id === 'mine' ? 'block' : 'none';
-  document.getElementById('sub-all').style.display  = id === 'all'  ? 'block' : 'none';
-  document.getElementById('sst-mine').classList.toggle('active', id === 'mine');
-  document.getElementById('sst-all').classList.toggle('active',  id === 'all');
-  if (id === 'all') renderFullTable();
+  ['mine','next','all'].forEach(tab => {
+    document.getElementById('sub-' + tab).style.display = tab === id ? 'block' : 'none';
+    document.getElementById('sst-' + tab).classList.toggle('active', tab === id);
+  });
+  if (id === 'all')  renderFullTable();
+  if (id === 'next') renderNextShiftComposition();
 }
 
 // ── EVENTS DATA — загружается из Firestore ──
