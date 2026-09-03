@@ -1,0 +1,3435 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Хачапури и Вино — Расписание</title>
+<!-- PWA -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#F54029">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ХиВ Расписание">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- OneSignal Push SDK -->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+/* ───────────────────────────────────────────
+   DESIGN TOKENS
+   ─────────────────────────────────────────── */
+:root {
+  /* Brand */
+  --wine:        #7a2330;
+  --wine-dark:   #4a1520;
+  --wine-light:  #9c2f40;
+  --gold:        #b8935a;
+  --gold-light:  #d4a96a;
+  --gold-dim:    rgba(184,147,90,0.15);
+  /* Light surfaces (manager + global) */
+  --canvas:      #f4efe8;
+  --panel:       #ffffff;
+  --panel-2:     #faf6f0;
+  --panel-3:     #f0ebe2;
+  /* Light surfaces (employee — kept for stone vars) */
+  --stone:       #f2ece4;
+  --stone-2:     #e8dfd4;
+  --stone-3:     #ddd4c8;
+  /* Text — dark on light */
+  --t-dark:      #1a1210;
+  --t-mid:       #5c4a42;
+  --t-muted:     #8a7068;
+  --t-ghost:     rgba(26,18,10,0.32);
+  --t-soft:      rgba(26,18,10,0.58);
+  --t-main:      rgba(26,18,10,0.88);
+  /* Borders — dark on light */
+  --b-soft:      rgba(26,18,10,0.07);
+  --b-mid:       rgba(26,18,10,0.12);
+  --b-warm:      rgba(26,18,10,0.2);
+  /* Zone palette */
+  --z-bar:    #b6d7a8;
+  --z-pech:   #f6b26b;
+  --z-mang:   #ea9999;
+  --z-lift:   #9fc5e8;
+  /* Typography */
+  --fd: 'Cormorant Garamond', Georgia, serif;
+  --fb: 'Inter', system-ui, sans-serif;
+  /* Radius */
+  --r-sm:  6px;
+  --r-md:  10px;
+  --r-lg:  16px;
+  --r-xl:  24px;
+}
+/* ───────────────────────────────────────────
+   RESET & BASE
+   ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: var(--fb); background: var(--canvas); color: var(--t-main); }
+button { font-family: var(--fb); cursor: pointer; border: none; }
+input, textarea, select { font-family: var(--fb); }
+a { color: var(--gold); }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(26,18,10,0.12); border-radius: 3px; }
+/* ───────────────────────────────────────────
+   SCREEN SYSTEM
+   ─────────────────────────────────────────── */
+.screen {
+  position: fixed; inset: 0;
+  display: none;
+  overflow: hidden;
+}
+.screen.active { display: flex; }
+/* ───────────────────────────────────────────
+   SETUP WIZARD
+   ─────────────────────────────────────────── */
+#screen-setup {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--canvas);
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+.setup-card {
+  width: 100%; max-width: 500px;
+  background: var(--panel);
+  border: 1px solid var(--b-mid);
+  border-radius: var(--r-xl);
+  padding: 2.5rem;
+}
+.setup-logo {
+  font-family: var(--fd);
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: var(--gold);
+  margin-bottom: 0.2rem;
+}
+.setup-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--t-ghost);
+  margin-bottom: 1.75rem;
+}
+.setup-desc {
+  font-size: 0.82rem;
+  color: var(--t-ghost);
+  line-height: 1.65;
+  margin-bottom: 1.5rem;
+}
+.sf { margin-bottom: 0.875rem; }
+.sf label {
+  display: block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--t-ghost);
+  margin-bottom: 0.3rem;
+}
+.sf input {
+  width: 100%;
+  background: rgba(26,18,10,0.04);
+  border: 1px solid var(--b-soft);
+  border-radius: var(--r-sm);
+  padding: 0.6rem 0.875rem;
+  color: var(--t-main);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.sf input:focus { border-color: var(--gold); background: rgba(26,18,10,0.06); }
+.btn-setup {
+  width: 100%; margin-top: 1.25rem;
+  background: var(--wine);
+  color: #fff;
+  border-radius: var(--r-md);
+  padding: 0.8rem;
+  font-size: 0.875rem; font-weight: 500;
+  transition: background 0.2s;
+}
+.btn-setup:hover { background: var(--wine-light); }
+.setup-note {
+  margin-top: 1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(184,147,90,0.08);
+  border: 1px solid rgba(184,147,90,0.18);
+  border-radius: var(--r-md);
+  font-size: 0.75rem;
+  color: var(--t-ghost);
+  line-height: 1.55;
+}
+/* ───────────────────────────────────────────
+   LOADING OVERLAY
+   ─────────────────────────────────────────── */
+#loading {
+  position: fixed; inset: 0; z-index: 999;
+  background: var(--canvas);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 1rem;
+}
+#loading.hidden { display: none; }
+.spinner {
+  width: 30px; height: 30px;
+  border: 2px solid rgba(26,18,10,0.1);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 0.75rem; color: var(--t-ghost); }
+/* ───────────────────────────────────────────
+   TOAST
+   ─────────────────────────────────────────── */
+#toast {
+  position: fixed; bottom: 1.5rem; left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--panel);
+  border: 1px solid var(--b-warm);
+  border-radius: 8px;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.82rem; color: var(--t-main);
+  box-shadow: 0 6px 24px rgba(26,18,10,0.18);
+  z-index: 9000;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+/* ───────────────────────────────────────────
+   LOGIN SCREEN  (stays dark — own gradient)
+   ─────────────────────────────────────────── */
+#screen-login {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #F54029;
+}
+.login-card {
+  position: relative;
+  width: 320px;
+  background: rgba(18,14,12,0.55);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: var(--r-xl);
+  padding: 2.75rem 2.25rem 2rem;
+  text-align: center;
+  box-shadow:
+    0 0 0 0.5px rgba(255,255,255,0.04) inset,
+    0 40px 80px rgba(0,0,0,0.65),
+    0 8px 24px rgba(0,0,0,0.3);
+}
+/* Faint gold line at top of card */
+.login-card::before {
+  content: '';
+  position: absolute; top: 0; left: 20%; right: 20%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(184,147,90,0.4), transparent);
+  border-radius: 50%;
+}
+.login-brand {
+  font-family: var(--fd);
+  font-size: 1.6rem;
+  font-weight: 400;
+  color: var(--gold);
+  letter-spacing: 0.02em;
+  margin-bottom: 0.15rem;
+}
+.login-tagline {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.25);
+  margin-bottom: 2.25rem;
+}
+/* PIN dots */
+.pin-row {
+  display: flex; justify-content: center; gap: 0.8rem;
+  margin-bottom: 2rem;
+}
+.pin-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  transition: all 0.15s;
+}
+.pin-dot.on {
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 10px rgba(184,147,90,0.45);
+}
+.pin-dot.err {
+  border-color: #e05050;
+  background: rgba(224,80,80,0.25);
+}
+/* Numpad */
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+}
+.np-btn {
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.055);
+  border-radius: var(--r-md);
+  padding: 0.95rem 0.5rem;
+  color: rgba(255,255,255,0.88);
+  font-size: 1.05rem;
+  transition: background 0.12s, transform 0.08s;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.np-btn:hover { background: rgba(255,255,255,0.09); }
+.np-btn:active { transform: scale(0.93); background: rgba(255,255,255,0.13); }
+.np-btn.del { font-size: 0.95rem; color: rgba(255,255,255,0.4); }
+.np-btn.ok  { color: var(--gold); font-size: 1.1rem; font-weight: 600; }
+.np-btn.ok:hover { background: rgba(184,147,90,0.15); }
+.login-hint {
+  margin-top: 1.25rem;
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.22);
+  min-height: 1.2em;
+}
+/* ───────────────────────────────────────────
+   EMPLOYEE SCREEN
+   ─────────────────────────────────────────── */
+#screen-employee {
+  flex-direction: column;
+  background: var(--stone);
+  color: var(--t-dark);
+  overflow-y: auto;
+}
+/* ── ANONYMOUS FEEDBACK ── */
+.anonfb-wrap { padding: 1.25rem 1.5rem; max-width: 680px; }
+.anonfb-header { margin-bottom: 1.25rem; }
+.anonfb-header h2 { font-size: 1.1rem; font-weight: 700; color: var(--t-dark); margin-bottom: 0.25rem; }
+.anonfb-sub { font-size: 0.8rem; color: var(--t-muted); }
+.anonfb-empty { color: var(--t-ghost); font-size: 0.85rem; padding: 1rem 0; }
+.anonfb-item {
+  background: var(--panel); border: 1px solid var(--b-soft);
+  border-radius: var(--r-lg); padding: 1rem 1.1rem;
+  margin-bottom: 0.85rem;
+}
+.anonfb-item.replied { opacity: 0.55; }
+.anonfb-meta { font-size: 0.72rem; color: var(--t-ghost); margin-bottom: 0.5rem; }
+.anonfb-text { font-size: 0.88rem; color: var(--t-dark); line-height: 1.5; margin-bottom: 0.85rem; white-space: pre-wrap; }
+.anonfb-replied-badge {
+  display: inline-block; font-size: 0.7rem; padding: 0.15rem 0.5rem;
+  background: rgba(100,180,100,0.12); color: #3a7a3a;
+  border-radius: 20px; margin-bottom: 0.5rem;
+}
+.anonfb-reply-area {
+  width: 100%; padding: 0.55rem 0.7rem; font-size: 0.82rem;
+  border: 1px solid var(--b-mid); border-radius: var(--r-md);
+  font-family: var(--fb); color: var(--t-dark); background: var(--stone);
+  resize: none; outline: none; box-sizing: border-box; min-height: 70px;
+}
+.anonfb-reply-area:focus { border-color: var(--wine-light); }
+.anonfb-reply-btn {
+  margin-top: 0.5rem; padding: 0.5rem 1.1rem;
+  background: var(--wine); color: #fff; border-radius: var(--r-md);
+  font-size: 0.8rem; font-weight: 600; border: none; cursor: pointer;
+  transition: background 0.15s;
+}
+.anonfb-reply-btn:hover { background: var(--wine-light); }
+.anonfb-reply-btn:disabled { opacity: 0.4; cursor: default; }
+.anonfb-prev-reply {
+  font-size: 0.78rem; color: var(--t-soft); margin-bottom: 0.5rem;
+  background: var(--stone); border-radius: var(--r-sm);
+  padding: 0.45rem 0.65rem; border-left: 2px solid var(--gold);
+}
+
+.emp-header {
+  background: var(--wine);
+  padding: 1.1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  position: sticky; top: 0; z-index: 10;
+}
+.emp-header-left {}
+.emp-header-brand {
+  font-family: var(--fd);
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: rgba(255,255,255,0.92);
+}
+.emp-header-period {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.55);
+  margin-top: 0.1rem;
+}
+.emp-header-name {
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.65);
+}
+.emp-body {
+  flex: 1;
+  padding: 1.25rem;
+  max-width: 680px;
+  width: 100%;
+  margin: 0 auto;
+}
+.emp-card {
+  background: #fff;
+  border-radius: var(--r-lg);
+  padding: 1.25rem;
+  margin-bottom: 0.875rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.04);
+}
+.emp-card h3 {
+  font-family: var(--fd);
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--wine);
+  margin-bottom: 0.35rem;
+}
+.emp-card .card-desc {
+  font-size: 0.78rem;
+  color: var(--t-muted);
+  line-height: 1.5;
+  margin-bottom: 0.875rem;
+}
+/* Day grid */
+.day-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(60px, 1fr));
+  gap: 0.375rem;
+}
+/* New day cell base */
+.day-cell {
+  border: 1.5px solid var(--stone-2);
+  border-radius: 8px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  min-height: 70px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0.3rem;
+  text-align: center;
+}
+.day-cell:active { transform: scale(0.93); }
+.dc-num { font-size: 1rem; font-weight: 700; color: var(--t-dark); }
+.dc-day { font-size: 0.55rem; text-transform: uppercase; opacity: 0.7; color: var(--t-muted); }
+.dc-lbl { font-size: 0.52rem; margin-top: 3px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--t-muted); }
+/* Weekend day cells */
+.day-cell.dc-wknd { border-color: rgba(200,140,0,0.3); background: rgba(255,200,0,0.04); }
+/* Shift state — morning У */
+.day-cell.dc-morn { background: #fff8e0; border-color: #e8c820; }
+.day-cell.dc-morn .dc-num { color: #7a5c00; }
+.day-cell.dc-morn .dc-lbl { color: #8a6a00; }
+/* Shift state — day Д12 */
+.day-cell.dc-d12  { background: #e8f3fd; border-color: #6aaee0; }
+.day-cell.dc-d12 .dc-num { color: #1555aa; }
+.day-cell.dc-d12 .dc-lbl { color: #1565c0; }
+/* Shift state — evening В */
+.day-cell.dc-eve  { background: #f3e5f5; border-color: #ab47bc; }
+.day-cell.dc-eve .dc-num { color: #6a1b9a; }
+.day-cell.dc-eve .dc-lbl { color: #7b1fa2; }
+/* Off-soft желательно */
+.day-cell.dc-soft { background: rgba(200,60,80,0.1); border-color: rgba(200,60,80,0.4); }
+.day-cell.dc-soft .dc-num, .day-cell.dc-soft .dc-lbl { color: #c03050; }
+.day-cell.dc-soft .dc-day { color: rgba(192,48,80,0.7); }
+/* Off-hard выходной */
+.day-cell.dc-hard { background: var(--wine); border-color: var(--wine); }
+.day-cell.dc-hard .dc-num, .day-cell.dc-hard .dc-day, .day-cell.dc-hard .dc-lbl { color: rgba(255,255,255,0.95); }
+/* Vacation */
+.day-cell.vac {
+  background: #f0f0f0; border-color: #d8d8d8;
+  pointer-events: none; opacity: 0.55;
+}
+.day-cell.vac .dc-num, .day-cell.vac .dc-day, .day-cell.vac .dc-lbl { color: #b0b0b0; }
+.emp-comment {
+  width: 100%; min-height: 72px;
+  border: 1.5px solid var(--stone-2);
+  border-radius: 8px;
+  padding: 0.6rem 0.875rem;
+  font-size: 0.85rem; color: var(--t-dark);
+  resize: vertical; outline: none;
+  transition: border-color 0.2s;
+  background: #fff;
+}
+.emp-comment:focus { border-color: var(--wine); }
+.emp-submit {
+  width: 100%;
+  background: var(--wine); color: #fff;
+  border-radius: var(--r-md);
+  padding: 0.875rem;
+  font-size: 0.9rem; font-weight: 500;
+  transition: background 0.18s;
+  margin-top: 0.25rem;
+}
+.emp-submit:hover { background: var(--wine-light); }
+/* ───────────────────────────────────────────
+   SUCCESS SCREEN
+   ─────────────────────────────────────────── */
+#screen-success {
+  flex-direction: column;
+  align-items: center; justify-content: center;
+  background: var(--stone);
+  color: var(--t-dark);
+  text-align: center;
+  padding: 2rem;
+}
+.success-check {
+  width: 64px; height: 64px;
+  background: var(--wine);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 1.25rem;
+  font-size: 1.75rem; color: #fff;
+}
+.success-h { font-family: var(--fd); font-size: 2rem; color: var(--wine); margin-bottom: 0.4rem; }
+.success-p { font-size: 0.85rem; color: var(--t-muted); max-width: 280px; line-height: 1.6; }
+.success-back {
+  margin-top: 2rem;
+  padding: 0.6rem 1.5rem;
+  border: 1.5px solid var(--stone-2);
+  border-radius: 8px;
+  background: none;
+  color: var(--t-mid);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+.success-back:hover { border-color: var(--wine); color: var(--wine); }
+/* ───────────────────────────────────────────
+   MANAGER SCREEN
+   ─────────────────────────────────────────── */
+#screen-manager {
+  flex-direction: column;
+  background: var(--canvas);
+  overflow: hidden;
+}
+/* Header */
+.mgr-head {
+  height: 52px; flex-shrink: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--b-soft);
+  display: flex; align-items: center;
+  padding: 0 1rem; gap: 0.75rem;
+  z-index: 30;
+}
+.mgr-brand {
+  font-family: var(--fd);
+  font-size: 1.15rem; font-weight: 400;
+  color: var(--gold);
+  white-space: nowrap;
+}
+.mgr-period-lbl {
+  font-size: 0.68rem;
+  color: var(--t-ghost);
+  white-space: nowrap;
+}
+.mgr-sep { flex: 1; }
+.tab-btns { display: flex; gap: 2px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex-shrink: 1; min-width: 0; }
+.tab-btns::-webkit-scrollbar { display: none; }
+.tab-btn {
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--r-sm);
+  font-size: 0.76rem; font-weight: 500;
+  color: var(--t-ghost);
+  background: none;
+  transition: all 0.14s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.tab-btn:hover { color: var(--t-soft); background: rgba(26,18,10,0.05); }
+.tab-btn.active { color: var(--gold); background: var(--gold-dim); }
+/* Body layout */
+.mgr-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+.mgr-main { flex: 1; min-width: 0; position: relative; }
+/* Tab panels */
+.tab-panel { display: none; position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+.tab-panel.active { display: block; }
+/* ───────────────────────────────────────────
+   SCHEDULE GRID
+   ─────────────────────────────────────────── */
+.grid-wrap { overflow: auto; height: 100%; }
+.sched-tbl {
+  border-collapse: collapse;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.sched-tbl th {
+  background: var(--panel);
+  border: 1px solid rgba(26,18,10,0.07);
+  padding: 0.375rem 0.25rem;
+  text-align: center;
+  font-size: 0.62rem; font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--t-soft);
+  position: sticky; top: 0; z-index: 5;
+}
+.sched-tbl th.th-name {
+  text-align: left;
+  padding-left: 0.75rem;
+  min-width: 158px;
+  position: sticky; left: 0; z-index: 10;
+}
+.sched-tbl td {
+  border: 1px solid rgba(26,18,10,0.06);
+  padding: 0;
+}
+.sched-tbl td.td-name {
+  position: sticky; left: 0; z-index: 3;
+  background: var(--panel-2);
+  color: var(--t-main);
+  padding: 0 0.75rem;
+  font-size: 0.7rem;
+  min-width: 158px;
+  height: 34px;
+}
+.sched-tbl tr.grp-row td {
+  background: rgba(122,35,48,0.08) !important;
+  color: var(--wine) !important;
+  font-weight: 600;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.28rem 0.75rem !important;
+  height: auto !important;
+}
+.cell {
+  width: 46px; height: 34px;
+  text-align: center;
+  cursor: pointer;
+  vertical-align: middle;
+  position: relative;
+  transition: background 0.12s;
+}
+.cell:hover { background: rgba(26,18,10,0.06) !important; }
+.cell-s { font-weight: 700; font-size: 0.68rem; line-height: 1; display: block; }
+.cell-z { font-size: 0.52rem; display: block; margin-top: 1px; opacity: 0.85; }
+/* Shift bg tints */
+.sh-U   { background: rgba(255,210,80,0.12); }
+.sh-D12 { background: rgba(80,160,255,0.1); }
+.sh-V   { background: rgba(160,100,255,0.1); }
+/* Weekend cols */
+.col-wknd { background: rgba(255,180,80,0.04) !important; }
+/* Wish indicators in schedule grid */
+.cell.wish-soft   { background: rgba(200,60,80,0.07) !important; }
+.cell.wish-strict { background: rgba(200,60,80,0.18) !important; }
+.wish-dot { position:absolute; top:2px; right:2px; width:4px; height:4px; border-radius:50%; background:rgba(200,60,80,0.6); }
+.cell { position: relative; }
+/* ───────────────────────────────────────────
+   CELL POPUP
+   ─────────────────────────────────────────── */
+#cell-popup {
+  position: fixed; z-index: 500;
+  background: var(--panel-2);
+  border: 1px solid var(--b-warm);
+  border-radius: var(--r-md);
+  padding: 0.375rem;
+  box-shadow: 0 10px 40px rgba(26,18,10,0.2);
+  min-width: 136px;
+  display: none;
+}
+#cell-popup.open { display: block; }
+.pop-shift {
+  display: block; width: 100%;
+  padding: 0.42rem 0.7rem;
+  text-align: left;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--t-soft);
+  font-size: 0.78rem;
+  transition: background 0.1s;
+}
+.pop-shift:hover { background: rgba(26,18,10,0.07); }
+.pop-shift.cur { background: var(--gold-dim); color: var(--gold); }
+.pop-div { height: 1px; background: var(--b-soft); margin: 0.25rem 0; }
+.pop-zone-lbl {
+  font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--t-ghost); padding: 0.2rem 0.7rem;
+}
+.pop-zones { display: flex; flex-wrap: wrap; gap: 3px; padding: 0.2rem 0.5rem 0.3rem; }
+.pop-z {
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.65rem; font-weight: 600;
+  cursor: pointer;
+  color: #1a1210;
+  transition: opacity 0.12s, transform 0.08s;
+  border: 1.5px solid transparent;
+}
+.pop-z:hover { opacity: 0.8; }
+.pop-z.cur-z { border-color: rgba(26,18,10,0.5); }
+.pop-z.clr-z {
+  background: rgba(26,18,10,0.08) !important;
+  color: var(--t-soft);
+  font-size: 0.7rem;
+}
+/* ───────────────────────────────────────────
+   WISHES TAB
+   ─────────────────────────────────────────── */
+.wishes-body { padding: 1.25rem; }
+.wish-empty {
+  text-align: center; padding: 3rem 1rem;
+  font-size: 0.82rem; color: var(--t-ghost);
+}
+.wish-card {
+  background: var(--panel);
+  border: 1px solid var(--b-soft);
+  border-radius: var(--r-lg);
+  padding: 1.1rem 1.25rem;
+  margin-bottom: 0.875rem;
+}
+.wc-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem; }
+.wc-name { font-size: 0.88rem; font-weight: 500; color: var(--t-main); }
+.wc-meta { font-size: 0.66rem; color: var(--t-ghost); margin-top: 0.15rem; }
+.wc-time { font-size: 0.66rem; color: var(--t-ghost); text-align: right; }
+.wc-days { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 0.5rem; }
+.wd-tag {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.67rem; font-weight: 500;
+}
+.wd-off    { background: rgba(160,40,60,0.12); color: #a02840; }
+.wd-strict { background: rgba(122,35,48,0.12); color: var(--wine); }
+.wc-shifts { font-size: 0.72rem; color: var(--t-soft); margin-bottom: 0.4rem; }
+.wc-comment { font-size: 0.75rem; color: var(--t-ghost); font-style: italic; }
+/* ───────────────────────────────────────────
+   ADMIN TAB
+   ─────────────────────────────────────────── */
+.admin-body { padding: 1.25rem; }
+.adm-section {
+  background: var(--panel);
+  border: 1px solid var(--b-soft);
+  border-radius: var(--r-lg);
+  padding: 1.25rem;
+  margin-bottom: 1.1rem;
+}
+.adm-section h3 {
+  font-size: 0.68rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--gold);
+  margin-bottom: 1rem;
+}
+.adm-row { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: flex-end; }
+.adm-f { flex: 1; min-width: 0; }
+.adm-f label {
+  display: block; font-size: 0.65rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--t-ghost); margin-bottom: 0.3rem;
+}
+.adm-f input, .adm-f select {
+  width: 100%;
+  background: rgba(26,18,10,0.04);
+  border: 1px solid var(--b-soft);
+  border-radius: var(--r-sm);
+  padding: 0.5rem 0.7rem;
+  color: var(--t-main);
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.18s;
+}
+.adm-f input:focus, .adm-f select:focus { border-color: var(--gold); }
+.adm-f select option { background: #faf6f0; color: var(--t-main); }
+.btn-xs {
+  padding: 0.5rem 0.875rem;
+  border-radius: var(--r-sm);
+  font-size: 0.78rem; font-weight: 500;
+  border: 1px solid var(--b-mid);
+  background: rgba(26,18,10,0.04);
+  color: var(--t-soft);
+  transition: all 0.14s;
+  white-space: nowrap;
+}
+.btn-xs:hover { border-color: var(--gold); color: var(--gold); }
+.btn-xs.prim { background: var(--wine); border-color: var(--wine); color: #fff; }
+.btn-xs.prim:hover { background: var(--wine-light); }
+.btn-xs.red:hover { border-color: #e05050; color: #e05050; }
+.btn-row { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+/* Employee list */
+.emp-list {}
+.emp-list-row {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--b-soft);
+}
+.emp-list-row:last-child { border-bottom: none; }
+.elr-name { flex: 1; font-size: 0.78rem; color: var(--t-soft); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.elr-name:hover { color: var(--wine); text-decoration: underline dotted; }
+.elr-sub  { font-size: 0.65rem; color: var(--t-ghost); flex-shrink: 0; }
+.elr-pin  {
+  font-family: monospace; font-size: 0.72rem;
+  color: var(--t-ghost); flex-shrink: 0;
+  cursor: pointer; padding: 0.2rem 0.4rem;
+  border-radius: 4px; border: 1px solid transparent;
+  transition: all 0.12s;
+}
+.elr-pin:hover { border-color: var(--b-mid); color: var(--t-soft); }
+.elr-order { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+.elr-ord-btn { font-size: 0.55rem; line-height: 1; padding: 1px 4px; border: 1px solid var(--b-mid); border-radius: 3px; background: none; color: var(--t-ghost); cursor: pointer; transition: all 0.1s; }
+.elr-ord-btn:hover:not(:disabled) { border-color: var(--gold); color: var(--gold); }
+.elr-ord-btn:disabled { opacity: 0.2; cursor: default; }
+.emp-grp-hdr {
+  font-size: 0.65rem; font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--t-ghost);
+  padding: 0.75rem 0 0.3rem;
+  border-top: 1px solid var(--b-soft);
+  margin-top: 0.25rem;
+}
+.emp-grp-hdr:first-child { border-top: none; margin-top: 0; padding-top: 0.1rem; }
+/* Sub selector in admin */
+.sub-sel {
+  font-size: 0.65rem; color: var(--t-soft); background: transparent;
+  border: 1px solid var(--b-mid); border-radius: 4px;
+  padding: 0.18rem 0.3rem; cursor: pointer; flex-shrink: 0;
+  outline: none; transition: border-color 0.12s;
+}
+.sub-sel:hover { border-color: var(--gold); }
+.sub-sel option { background: #faf6f0; color: var(--t-main); }
+/* Manager note icon */
+.note-btn {
+  font-size: 0.65rem; color: var(--t-ghost); cursor: pointer;
+  padding: 0.2rem 0.35rem; border-radius: 4px;
+  border: 1px solid transparent; transition: all 0.12s; flex-shrink: 0;
+}
+.note-btn:hover { border-color: var(--b-mid); color: var(--t-soft); }
+.note-btn.has-note { color: var(--gold); border-color: rgba(184,147,90,0.3); }
+/* Schedule totals footer */
+.sched-tbl tfoot tr td {
+  background: var(--panel) !important;
+  border-top: 2px solid rgba(26,18,10,0.12) !important;
+  text-align: center; padding: 3px 2px;
+}
+.sched-tbl tfoot .tot-lbl {
+  font-size: 0.6rem; font-weight: 600; color: var(--t-ghost);
+  text-align: left; padding-left: 0.5rem; letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sched-tbl tfoot .tot-cell { font-size: 0.55rem; line-height: 1.5; }
+.sched-tbl tfoot .tot-cell span { display: block; }
+.tot-u   { color: #2277cc; }
+.tot-d12 { color: #996600; }
+.tot-v   { color: #7744cc; }
+.tot-zero { color: rgba(26,18,10,0.2); }
+/* Wish card manager note */
+.wc-mgr-note {
+  margin-top: 0.4rem; font-size: 0.72rem;
+  color: var(--gold); background: rgba(184,147,90,0.08);
+  border-left: 2px solid var(--gold); padding: 0.3rem 0.6rem;
+  border-radius: 0 4px 4px 0;
+}
+/* ───────────────────────────────────────────
+   STATUS TAB
+   ─────────────────────────────────────────── */
+.status-wrap { padding: 1.5rem; max-width: 700px; margin: 0 auto; }
+.status-header { text-align:center; padding: 2rem 1rem; background: var(--panel); border-radius: var(--r-lg); margin-bottom: 1.5rem; border: 1px solid var(--b-soft); }
+.sh-count { font-family: var(--fd); font-size: 4rem; font-weight: 600; color: var(--wine); line-height: 1; }
+.sh-label { font-size: 0.85rem; color: var(--t-soft); margin-top: 0.25rem; }
+.status-section { background: var(--panel); border-radius: var(--r-lg); border: 1px solid var(--b-soft); margin-bottom: 1rem; overflow: hidden; }
+.ss-title { padding: 0.75rem 1rem; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--t-ghost); border-bottom: 1px solid var(--b-soft); }
+.ss-empty { padding: 1rem; font-size: 0.82rem; color: var(--t-ghost); text-align: center; }
+.status-row { display:flex; align-items:center; gap:0.75rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--b-soft); }
+.status-row:last-child { border-bottom: none; }
+.status-row.missing .sr-name { font-weight: 500; }
+.status-row.done .sr-name { color: var(--t-soft); }
+.sr-name { flex: 1; font-size: 0.82rem; }
+.sr-sub { font-size: 0.65rem; color: var(--t-ghost); }
+.sr-time { font-size: 0.65rem; color: var(--gold); white-space: nowrap; }
+/* ───────────────────────────────────────────
+   EXCEPTIONS TAB
+   ─────────────────────────────────────────── */
+.exc-wrap { padding: 1.5rem; max-width: 800px; margin: 0 auto; }
+.exc-header { margin-bottom: 1.5rem; }
+.exc-title { font-size: 1.1rem; font-weight: 600; color: var(--t-main); margin-bottom: 0.25rem; }
+.exc-desc { font-size: 0.78rem; color: var(--t-soft); }
+.exc-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.exc-row { background: var(--panel); border: 1px solid var(--b-soft); border-radius: var(--r-md); padding: 0.75rem 1rem; }
+.exc-name { font-weight: 600; font-size: 0.85rem; color: var(--t-main); }
+.exc-sub-tag { display:inline-block; font-size:0.62rem; color:var(--t-ghost); border:1px solid var(--b-soft); border-radius:4px; padding:0.1rem 0.4rem; margin-top:0.2rem; margin-bottom:0.5rem; }
+.exc-fields { display:flex; align-items:flex-end; gap:0.75rem; flex-wrap:wrap; }
+.exc-f { display:flex; flex-direction:column; gap:0.2rem; }
+.exc-f label { font-size:0.62rem; font-weight:600; text-transform:uppercase; letter-spacing:0.07em; color:var(--t-ghost); }
+.exc-f input { background:var(--panel-2); border:1px solid var(--b-mid); border-radius:var(--r-sm); padding:0.4rem 0.6rem; color:var(--t-main); font-size:0.82rem; outline:none; }
+.exc-f input:focus { border-color:var(--gold); }
+.exc-f-note { flex:1; }
+.exc-f-note input { width:100%; }
+/* ── Quick buttons (employee form) ── */
+.quick-btns { display:flex; flex-wrap:wrap; gap:0.375rem; margin-bottom:0.875rem; }
+.qbtn { padding:0.3rem 0.65rem; border-radius:20px; font-size:0.7rem; font-weight:500; border:1px solid var(--b-mid); background:rgba(26,18,10,0.03); color:var(--t-soft); transition:all 0.12s; cursor:pointer; }
+.qbtn:hover { border-color:var(--wine); color:var(--wine); background:rgba(122,35,48,0.04); }
+.qbtn.reset-q { border-color:transparent; color:var(--t-ghost); }
+.qbtn.reset-q:hover { color:#e05050; border-color:rgba(224,80,80,0.4); }
+/* ── Shift list (employee form) ── */
+.shift-list { display:flex; flex-direction:column; }
+.shift-row { display:flex; align-items:center; gap:0.5rem; padding:0.3rem 0; border-bottom:1px solid var(--b-soft); }
+.shift-row:last-child { border-bottom:none; }
+.shift-row-date { font-size:0.8rem; font-weight:600; color:var(--t-main); min-width:24px; text-align:center; }
+.shift-row-dow  { font-size:0.62rem; color:var(--t-ghost); min-width:22px; }
+.shift-sel { flex:1; border:1px solid var(--b-mid); border-radius:var(--r-sm); padding:0.3rem 0.5rem; font-size:0.78rem; color:var(--t-main); background:rgba(26,18,10,0.02); outline:none; cursor:pointer; }
+.shift-sel:focus { border-color:var(--wine); }
+.shift-row.is-hard { display:none; }
+/* ── Confirmation overlay ── */
+.emp-confirm {
+  display:none; position:fixed; inset:0; z-index:200;
+  background:var(--stone); overflow-y:auto;
+  flex-direction:column; align-items:center;
+}
+.emp-confirm.open { display:flex; }
+.cnf-card { background:#fff; border-radius:var(--r-lg); padding:1.25rem; margin:1rem 1rem 0; max-width:500px; width:calc(100% - 2rem); box-shadow:0 2px 12px rgba(0,0,0,0.08); }
+.cnf-title { font-family:var(--fd); font-size:1.3rem; color:var(--wine); margin-bottom:1rem; }
+.cnf-section { margin-bottom:0.875rem; }
+.cnf-lbl { font-size:0.62rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--t-ghost); margin-bottom:0.35rem; }
+.cnf-tags { display:flex; flex-wrap:wrap; gap:4px; }
+.cnf-empty { font-size:0.78rem; color:var(--t-ghost); }
+.cnf-btns { display:flex; gap:0.75rem; padding:1rem 1rem 3rem; max-width:500px; width:100%; }
+.cnf-back { flex:1; padding:0.875rem; border:1.5px solid var(--stone-2); border-radius:var(--r-md); background:none; color:var(--t-mid); font-size:0.88rem; cursor:pointer; }
+.cnf-back:hover { border-color:var(--wine); color:var(--wine); }
+.cnf-submit { flex:2; background:var(--wine); color:#fff; border-radius:var(--r-md); padding:0.875rem; font-size:0.88rem; font-weight:600; cursor:pointer; }
+.cnf-submit:hover { background:var(--wine-light); }
+/* ── Coverage norm colors ── */
+.tot-ok   { color:#1a8a1a; }
+.tot-over { color:#2277cc; }
+.tot-low  { color:#cc2222; font-weight:700; }
+.tot-neutral { color:rgba(26,18,10,0.35); }
+/* ── Vacation cell in schedule grid ── */
+.cell-vacation { background:rgba(0,160,160,0.1) !important; }
+.cell-vacation:hover { background:rgba(0,160,160,0.18) !important; }
+.cell-vac-s { font-size:0.52rem; color:#1a8080; display:block; }
+/* ── Exception search ── */
+.exc-search-wrap { margin-bottom:1rem; }
+.exc-search { width:100%; padding:0.5rem 0.875rem; border:1px solid var(--b-mid); border-radius:var(--r-md); font-size:0.82rem; color:var(--t-main); background:var(--panel); outline:none; transition:border-color 0.18s; }
+.exc-search:focus { border-color:var(--gold); }
+/* ── Vacation Tab ── */
+.vac-wrap { padding:1.5rem; max-width:860px; margin:0 auto; }
+.vac-summary { display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; padding:0.75rem 1rem; background:var(--panel); border:1px solid var(--b-soft); border-radius:var(--r-md); }
+.vac-summary-text { font-size:0.8rem; color:var(--t-ghost); }
+.vac-summary-text b { color:var(--t-main); }
+.vac-section { background:var(--panel); border:1px solid var(--b-soft); border-radius:var(--r-lg); margin-bottom:1rem; overflow:hidden; }
+.vac-section-title { padding:0.55rem 1rem; font-size:0.67rem; font-weight:700; text-transform:uppercase; letter-spacing:0.1em; color:var(--gold); border-bottom:1px solid var(--b-soft); background:rgba(184,147,90,0.04); }
+.vac-row { display:flex; align-items:center; gap:0.75rem; padding:0.55rem 1rem; border-bottom:1px solid var(--b-soft); flex-wrap:wrap; min-height:44px; }
+.vac-row:last-child { border-bottom:none; }
+.vac-name { font-size:0.82rem; font-weight:500; color:var(--t-main); min-width:148px; flex-shrink:0; }
+.vac-days { display:flex; flex-wrap:wrap; gap:3px; flex:1; min-width:0; }
+.vac-chip { background:rgba(0,160,160,0.1); color:#1a6e6e; border:1px solid rgba(0,160,160,0.28); border-radius:4px; padding:0.1rem 0.5rem; font-size:0.68rem; font-weight:500; white-space:nowrap; }
+.vac-none  { font-size:0.72rem; color:var(--t-ghost); }
+.vac-edit-row { display:flex; gap:0.35rem; align-items:center; flex-shrink:0; }
+.vac-input { border:1px solid var(--b-mid); border-radius:var(--r-sm); padding:0.28rem 0.5rem; font-size:0.75rem; color:var(--t-main); background:rgba(26,18,10,0.03); outline:none; width:115px; transition:border-color 0.15s; }
+.vac-input:focus { border-color:#1a8080; }
+.vac-save { padding:0.28rem 0.6rem; border-radius:var(--r-sm); font-size:0.72rem; font-weight:600; background:rgba(0,160,160,0.13); color:#1a6e6e; border:1px solid rgba(0,160,160,0.3); cursor:pointer; transition:all 0.12s; }
+.vac-save:hover { background:rgba(0,160,160,0.22); }
+.vac-clr { padding:0.28rem 0.45rem; border-radius:var(--r-sm); font-size:0.72rem; color:var(--t-ghost); border:1px solid transparent; cursor:pointer; background:none; transition:all 0.12s; }
+.vac-clr:hover { color:#e05050; border-color:rgba(224,80,80,0.3); }
+/* ───────────────────────────────────────────
+   CONFLICT CELLS
+   ─────────────────────────────────────────── */
+.cell-conflict { background: rgba(210,40,40,0.13) !important; box-shadow: inset 0 0 0 1.5px rgba(210,40,40,0.6) !important; }
+.cell-conflict:hover { background: rgba(210,40,40,0.2) !important; }
+.cell-soft-conflict { box-shadow: inset 0 0 0 1.5px rgba(200,120,0,0.5) !important; }
+.conflict-icon { position: absolute; top: 1px; left: 2px; font-size: 0.45rem; line-height: 1; color: #cc2222; pointer-events: none; }
+/* ───────────────────────────────────────────
+   EMPLOYEE SCHEDULE VIEW
+   ─────────────────────────────────────────── */
+#screen-emp-view { flex-direction: column; background: #F54029; color: var(--t-dark); overflow-y: auto; }
+#screen-emp-view .emp-header { background: #0f0d0b !important; border-bottom: 1px solid rgba(255,255,255,0.08); }
+#screen-emp-view .emp-header-brand,
+#screen-emp-view .emp-header-period,
+#screen-emp-view .emp-header-name { color: rgba(255,255,255,0.85) !important; }
+#screen-emp-view .emp-card { background: #0f0d0b !important; color: rgba(255,255,255,0.88) !important; box-shadow: 0 4px 16px rgba(0,0,0,0.35) !important; border: 1px solid rgba(255,255,255,0.07); }
+#screen-emp-view .emp-card h3 { color: var(--gold-light) !important; }
+#screen-emp-view .emp-card .card-desc { color: rgba(255,255,255,0.45) !important; }
+/* ev-day colors are self-contained — no overrides needed here */
+#screen-emp-view .dl-open   { background: rgba(0,160,80,0.18) !important; border-color: rgba(0,200,100,0.3) !important; color: #7de8b0 !important; }
+#screen-emp-view .dl-closed { background: rgba(200,50,50,0.2) !important; border-color: rgba(220,80,80,0.35) !important; color: #ffaaaa !important; }
+#screen-emp-view [style*="background:rgba(0,0,0,0.06)"] { background: rgba(255,255,255,0.1) !important; border-color: rgba(255,255,255,0.2) !important; color: rgba(255,255,255,0.75) !important; }
+#screen-emp-view .btn-wish { background: #7a2330 !important; }
+#screen-emp-view .btn-wish:hover { background: #9c2f40 !important; }
+#screen-emp-view a, #screen-emp-view button:not(.btn-wish) { color: rgba(255,255,255,0.7) !important; border-color: rgba(255,255,255,0.2) !important; }
+.ev-strip { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.35rem; }
+/* Base card */
+.ev-day {
+  border: 1.5px solid rgba(255,255,255,0.15);
+  border-radius: 10px;
+  padding: 0.5rem 0.35rem 0.45rem;
+  min-width: 58px;
+  text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: rgba(255,255,255,0.10);
+}
+.ev-day-num { font-size: 1rem; font-weight: 700; color: #fff; line-height: 1; }
+.ev-day-dow { font-size: 0.52rem; text-transform: uppercase; color: rgba(255,255,255,0.55); letter-spacing: 0.04em; }
+.ev-day-sh  { font-size: 0.68rem; font-weight: 700; margin-top: 3px; color: rgba(255,255,255,0.9); letter-spacing: 0.02em; }
+
+/* Day off — red */
+.ev-day.ev-off {
+  background: rgba(195,35,35,0.80);
+  border-color: rgba(255,80,80,0.35);
+}
+.ev-day.ev-off .ev-day-sh {
+  font-size: 0.42rem; font-weight: 800;
+  text-transform: uppercase; letter-spacing: 0.08em;
+  color: rgba(255,200,200,0.95);
+}
+
+/* Zone-colored shift cards */
+.ev-day.ev-mangal { background: rgba(210,90,70,0.88);  border-color: rgba(255,130,110,0.4); }
+.ev-day.ev-pechka { background: rgba(215,140,40,0.88); border-color: rgba(255,180,70,0.4);  }
+.ev-day.ev-lift   { background: rgba(55,130,210,0.88); border-color: rgba(100,170,255,0.4); }
+.ev-day.ev-bar    { background: rgba(60,155,90,0.88);  border-color: rgba(100,210,130,0.4); }
+.ev-day.ev-shift  { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.22); }
+
+/* Vacation */
+.ev-day.ev-vac { background: rgba(0,160,160,0.22); border-color: rgba(0,200,200,0.3); }
+.ev-day.ev-vac .ev-day-sh { font-size: 0.52rem; color: #7de8e8; }
+
+.ev-no-sched { font-size: 0.82rem; color: rgba(255,255,255,0.4); text-align: center; padding: 1.5rem 0; }
+/* ───────────────────────────────────────────
+   DEADLINE BADGE
+   ─────────────────────────────────────────── */
+.deadline-badge { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.45rem 0.85rem; border-radius: var(--r-md); font-size: 0.76rem; line-height: 1.35; }
+.dl-open   { background: rgba(0,160,80,0.08);  border: 1px solid rgba(0,160,80,0.25);  color: #1a5e35; }
+.dl-closed { background: rgba(200,50,50,0.1);  border: 1px solid rgba(200,50,50,0.3);  color: #7a1818; }
+/* ───────────────────────────────────────────
+   HISTORY TAB
+   ─────────────────────────────────────────── */
+.hist-wrap { padding: 1.5rem; max-width: 960px; margin: 0 auto; }
+.hist-back { display: inline-flex; align-items: center; gap: 0.4rem; margin-bottom: 1.25rem; padding: 0.4rem 0.875rem; border: 1px solid var(--b-mid); border-radius: var(--r-sm); font-size: 0.78rem; color: var(--t-soft); background: none; cursor: pointer; transition: all 0.14s; }
+.hist-back:hover { border-color: var(--gold); color: var(--gold); }
+.hist-period-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.hist-period-card { background: var(--panel); border: 1px solid var(--b-soft); border-radius: var(--r-md); padding: 0.875rem 1rem; display: flex; align-items: center; gap: 1rem; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+.hist-period-card:hover { border-color: var(--gold); }
+.hist-period-card.hist-cur { border-color: rgba(122,35,48,0.35); background: rgba(122,35,48,0.03); }
+.hist-pk { flex: 1; min-width: 0; }
+.hist-pk-name { font-size: 0.9rem; font-weight: 500; color: var(--t-main); }
+.hist-pk-key  { font-size: 0.67rem; color: var(--t-ghost); margin-top: 0.1rem; font-family: monospace; }
+.hist-badge   { font-size: 0.68rem; color: var(--t-ghost); white-space: nowrap; flex-shrink: 0; }
+.hist-cur-tag { font-size: 0.62rem; color: var(--gold); font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.hist-view-period { font-family: var(--fd); font-size: 1.25rem; color: var(--wine); margin-bottom: 0.2rem; }
+.hist-view-key    { font-size: 0.67rem; color: var(--t-ghost); font-family: monospace; margin-bottom: 1rem; }
+.hist-grid-outer  { overflow: auto; max-height: 65vh; border: 1px solid var(--b-soft); border-radius: var(--r-md); margin-top: 0.5rem; }
+.hist-empty { text-align: center; padding: 3rem 1rem; font-size: 0.82rem; color: var(--t-ghost); }
+/* ── EMPLOYEE FORM — RED/DARK THEME ── */
+#screen-employee {
+  background: #F54029 !important;
+}
+#screen-employee .emp-header {
+  background: #0f0d0b !important;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+#screen-employee .emp-card {
+  background: #0f0d0b !important;
+  color: rgba(255,255,255,0.88) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.35) !important;
+  border: 1px solid rgba(255,255,255,0.07);
+}
+#screen-employee .emp-card h3 {
+  color: var(--gold-light) !important;
+}
+#screen-employee .emp-card .card-desc {
+  color: rgba(255,255,255,0.45) !important;
+}
+#screen-employee .day-cell {
+  border-color: rgba(255,255,255,0.13) !important;
+  background: rgba(255,255,255,0.05) !important;
+}
+#screen-employee .dc-num { color: rgba(255,255,255,0.92) !important; }
+#screen-employee .dc-day { color: rgba(255,255,255,0.4) !important; }
+#screen-employee .dc-lbl { color: rgba(255,255,255,0.45) !important; }
+#screen-employee .day-cell.dc-soft {
+  background: rgba(200,50,70,0.35) !important;
+  border-color: rgba(220,70,90,0.55) !important;
+}
+#screen-employee .day-cell.dc-soft .dc-num,
+#screen-employee .day-cell.dc-soft .dc-lbl { color: #ffaaaa !important; }
+#screen-employee .day-cell.dc-soft .dc-day  { color: rgba(255,170,170,0.65) !important; }
+#screen-employee .day-cell.dc-hard {
+  background: #7a2330 !important;
+  border-color: #9c2f40 !important;
+}
+#screen-employee .emp-comment {
+  background: rgba(255,255,255,0.07) !important;
+  border-color: rgba(255,255,255,0.13) !important;
+  color: rgba(255,255,255,0.9) !important;
+}
+#screen-employee .emp-comment::placeholder { color: rgba(255,255,255,0.28) !important; }
+#screen-employee .qbtn {
+  background: rgba(255,255,255,0.09) !important;
+  color: rgba(255,255,255,0.8) !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+}
+#screen-employee .qbtn:hover {
+  background: rgba(255,255,255,0.16) !important;
+  border-color: rgba(255,255,255,0.35) !important;
+  color: #fff !important;
+}
+#screen-employee .qbtn.reset-q {
+  color: rgba(255,255,255,0.35) !important;
+  border-color: transparent !important;
+}
+#screen-employee .qbtn.reset-q:hover {
+  color: #ffaaaa !important;
+  border-color: rgba(255,150,150,0.4) !important;
+}
+#screen-employee .shift-row {
+  border-color: rgba(255,255,255,0.08) !important;
+  color: rgba(255,255,255,0.8) !important;
+}
+#screen-employee .shift-row-date { color: rgba(255,255,255,0.9) !important; }
+#screen-employee .shift-row-dow  { color: rgba(255,255,255,0.4) !important; }
+#screen-employee .shift-sel {
+  background: #2a2220 !important;
+  color: rgba(255,255,255,0.9) !important;
+  border-color: rgba(255,255,255,0.2) !important;
+}
+#screen-employee .shift-sel option {
+  background: #2a2220 !important;
+  color: rgba(255,255,255,0.9) !important;
+}
+#screen-employee .shift-row.is-hard { background: rgba(0,0,0,0.25) !important; }
+#screen-employee .dl-open   { background: rgba(0,160,80,0.18) !important; border-color: rgba(0,200,100,0.3) !important; color: #7de8b0 !important; }
+#screen-employee .dl-closed { background: rgba(200,50,50,0.2) !important; border-color: rgba(220,80,80,0.35) !important; color: #ffaaaa !important; }
+#screen-employee .cnf-legend { color: rgba(255,255,255,0.55) !important; }
+#screen-employee .cnf-row    { border-color: rgba(255,255,255,0.07) !important; }
+#screen-employee .cnf-swatch.soft { background: rgba(200,50,70,0.5) !important; border-color: rgba(220,70,90,0.7) !important; }
+#screen-employee .cnf-swatch.hard { background: #7a2330 !important; border-color: #9c2f40 !important; }
+#screen-employee .cnf-lbl    { color: rgba(255,255,255,0.65) !important; }
+</style>
+</head>
+<body>
+<!-- ── LOADING ── -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text">Загрузка...</div>
+</div>
+<!-- ── TOAST ── -->
+<div id="toast"></div>
+
+<!-- ── ACH PANEL ── -->
+<div id="ach-backdrop" onclick="closeAchPanel(event)" style="display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,0.55);backdrop-filter:blur(4px);overflow-y:auto;">
+  <div id="ach-panel" style="background:#1a1a2e;border-radius:18px;max-width:480px;margin:2rem auto;padding:1.5rem;position:relative;" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem;">
+      <div id="ach-panel-title" style="font-size:1.1rem;font-weight:800;color:#fff;"></div>
+      <button onclick="document.getElementById('ach-backdrop').style.display='none';_achEmpId=null;" style="background:none;border:none;color:rgba(255,255,255,0.4);font-size:1.4rem;cursor:pointer;line-height:1;">×</button>
+    </div>
+
+    <!-- Задания -->
+    <div style="margin-bottom:1.2rem;">
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,0.35);letter-spacing:.08em;margin-bottom:0.6rem;">Задания</div>
+      <div id="ach-tasks-list" style="margin-bottom:0.6rem;"></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <input id="ach-task-title" placeholder="Название задания" style="flex:1;min-width:120px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:0.45rem 0.7rem;color:#fff;font-size:0.8rem;outline:none;">
+        <input id="ach-task-desc" placeholder="Описание (необяз.)" style="flex:2;min-width:140px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:0.45rem 0.7rem;color:#fff;font-size:0.8rem;outline:none;">
+        <input id="ach-task-deadline" type="date" title="Дедлайн (необяз.)" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:0.45rem 0.7rem;color:#fff;font-size:0.8rem;outline:none;color-scheme:dark;">
+        <button onclick="addTask()" style="background:#F54029;border:none;border-radius:8px;color:#fff;font-size:0.8rem;font-weight:700;padding:0.45rem 0.9rem;cursor:pointer;white-space:nowrap;">+ Добавить</button>
+      </div>
+    </div>
+
+    <!-- Ачивки -->
+    <div>
+      <div style="font-size:0.7rem;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,0.35);letter-spacing:.08em;margin-bottom:0.6rem;">Ачивки</div>
+      <div id="ach-list" style="margin-bottom:0.6rem;"></div>
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <input id="ach-emoji" placeholder="😊" maxlength="4" style="width:56px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:0.45rem 0.5rem;color:#fff;font-size:1rem;text-align:center;outline:none;">
+        <input id="ach-title" placeholder="Название ачивки" style="flex:1;min-width:140px;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:0.45rem 0.7rem;color:#fff;font-size:0.8rem;outline:none;">
+        <input id="ach-deadline" type="date" title="Дедлайн (необяз.)" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;padding:0.45rem 0.7rem;color:#fff;font-size:0.8rem;outline:none;color-scheme:dark;">
+        <button onclick="addAch()" style="background:#b59a40;border:none;border-radius:8px;color:#fff;font-size:0.8rem;font-weight:700;padding:0.45rem 0.9rem;cursor:pointer;white-space:nowrap;">+ Выдать</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ── CELL POPUP ── -->
+<div id="cell-popup"></div>
+<!-- ════════════════════════════════════════
+     SETUP SCREEN
+     ════════════════════════════════════════ -->
+<div class="screen" id="screen-setup">
+  <div class="setup-card">
+    <div class="setup-logo">Хачапури и Вино</div>
+    <div class="setup-title">Первый запуск — настройка Firebase</div>
+    <p class="setup-desc">
+      Введите данные вашего Firebase проекта. Найти их можно в
+      <strong style="color:var(--t-soft)">Firebase Console → Project Settings → Your apps → Web app → SDK snippet</strong>.
+    </p>
+    <div class="sf"><label>API Key</label><input id="fb-ak" placeholder="AIzaSy..."></div>
+    <div class="sf"><label>Auth Domain</label><input id="fb-ad" placeholder="project-id.firebaseapp.com"></div>
+    <div class="sf"><label>Project ID</label><input id="fb-pid" placeholder="project-id"></div>
+    <div class="sf"><label>Storage Bucket</label><input id="fb-sb" placeholder="project-id.appspot.com"></div>
+    <div class="sf"><label>Messaging Sender ID</label><input id="fb-ms" placeholder="1234567890"></div>
+    <div class="sf"><label>App ID</label><input id="fb-ai" placeholder="1:123456789:web:abc123..."></div>
+    <button class="btn-setup" onclick="saveSetup()">Подключить Firebase →</button>
+    <div class="setup-note">
+      💡 Firebase config — не секрет: он всегда виден в JS на стороне клиента.
+      Безопасность обеспечивается правилами Firestore. После подключения создайте правила:
+      разрешите чтение/запись только авторизованным запросам или оставьте открытыми на время тестирования.
+    </div>
+  </div>
+</div>
+<!-- ════════════════════════════════════════
+     LOGIN SCREEN
+     ════════════════════════════════════════ -->
+<div class="screen" id="screen-login">
+  <div class="login-card">
+    <div class="login-brand">Хачапури и Вино</div>
+    <div class="login-tagline">Расписание</div>
+    <div class="pin-row" id="pin-row"></div>
+    <div class="numpad">
+      <button class="np-btn" onclick="np('1')">1</button>
+      <button class="np-btn" onclick="np('2')">2</button>
+      <button class="np-btn" onclick="np('3')">3</button>
+      <button class="np-btn" onclick="np('4')">4</button>
+      <button class="np-btn" onclick="np('5')">5</button>
+      <button class="np-btn" onclick="np('6')">6</button>
+      <button class="np-btn" onclick="np('7')">7</button>
+      <button class="np-btn" onclick="np('8')">8</button>
+      <button class="np-btn" onclick="np('9')">9</button>
+      <button class="np-btn del" onclick="npDel()">⌫</button>
+      <button class="np-btn" onclick="np('0')">0</button>
+      <button class="np-btn ok" onclick="checkPin()">✓</button>
+    </div>
+    <div class="login-hint" id="login-hint"></div>
+  </div>
+</div>
+<!-- ════════════════════════════════════════
+     EMPLOYEE FORM
+     ════════════════════════════════════════ -->
+<div class="screen" id="screen-employee">
+  <div class="emp-header">
+    <div class="emp-header-left">
+      <div class="emp-header-brand">Хачапури и Вино</div>
+      <div class="emp-header-period" id="emp-period">Пожелания на период</div>
+    </div>
+    <div class="emp-header-name" id="emp-name-hdr"></div>
+  </div>
+  <div class="emp-body" id="emp-body">
+    <!-- OFF-DAYS CARD -->
+    <div class="emp-card">
+      <h3>Выходные дни</h3>
+      <p class="card-desc">
+        <b style="color:#c03050">1 нажатие</b> — желательно выходной.&nbsp;
+        <b style="color:var(--wine)">2 нажатия</b> — обязательно. 3 — отмена.<br>
+        Макс. подряд: <span id="max-off-lbl">3</span>.
+      </p>
+      <div class="day-grid" id="off-grid"></div>
+    </div>
+    <!-- SHIFT PREFS CARD -->
+    <div class="emp-card">
+      <h3>Предпочтения по сменам</h3>
+      <p class="card-desc">Выберите желаемую смену для рабочих дней.</p>
+      <div class="quick-btns" id="quick-btns"></div>
+      <div class="shift-list" id="shift-list"></div>
+    </div>
+    <!-- COMMENT CARD -->
+    <div class="emp-card">
+      <h3>Комментарий</h3>
+      <textarea class="emp-comment" id="emp-comment" placeholder="Любые пожелания, замечания, важные даты..."></textarea>
+    </div>
+    <button class="emp-submit" onclick="showConfirm()">Предпросмотр и отправить →</button>
+    <div style="height:2rem"></div>
+  </div>
+  <!-- CONFIRMATION OVERLAY -->
+  <div class="emp-confirm" id="emp-confirm">
+    <div class="cnf-card">
+      <div class="cnf-title">Проверьте пожелания</div>
+      <div class="cnf-section">
+        <div class="cnf-lbl">Желательно выходной</div>
+        <div class="cnf-tags" id="cnf-off"></div>
+      </div>
+      <div class="cnf-section">
+        <div class="cnf-lbl">Обязательно выходной</div>
+        <div class="cnf-tags" id="cnf-strict"></div>
+      </div>
+      <div class="cnf-section">
+        <div class="cnf-lbl">Предпочтения по сменам</div>
+        <div class="cnf-tags" id="cnf-shifts"></div>
+      </div>
+      <div class="cnf-section" id="cnf-comment-wrap" style="display:none">
+        <div class="cnf-lbl">Комментарий</div>
+        <div id="cnf-comment" style="font-size:0.8rem;color:var(--t-soft);font-style:italic;"></div>
+      </div>
+    </div>
+    <div class="cnf-btns">
+      <button class="cnf-back" onclick="closeConfirm()">← Изменить</button>
+      <button class="cnf-submit" onclick="submitWish()">Отправить →</button>
+    </div>
+  </div>
+</div>
+<!-- ════════════════════════════════════════
+     SUCCESS SCREEN
+     ════════════════════════════════════════ -->
+<div class="screen" id="screen-success">
+  <div class="success-check">✓</div>
+  <div class="success-h">Отправлено!</div>
+  <div class="success-p">Спасибо — менеджер учтёт ваши пожелания при составлении расписания.</div>
+  <button class="success-back" onclick="goAfterSuccess()">← Назад</button>
+</div>
+<!-- ════════════════════════════════════════
+     EMPLOYEE VIEW SCREEN
+     ════════════════════════════════════════ -->
+<div class="screen" id="screen-emp-view">
+  <div class="emp-header">
+    <div class="emp-header-left">
+      <div class="emp-header-brand">Хачапури и Вино</div>
+      <div class="emp-header-period" id="ev-period">Период</div>
+    </div>
+    <div class="emp-header-name" id="ev-name-hdr"></div>
+  </div>
+  <div class="emp-body">
+    <div class="emp-card">
+      <h3>Ваше расписание</h3>
+      <p class="card-desc" id="ev-sched-desc">Смены на период</p>
+      <div class="ev-strip" id="ev-sched-strip"></div>
+    </div>
+    <div class="emp-card">
+      <h3>Пожелания</h3>
+      <div id="ev-wish-status" style="font-size:0.82rem;color:var(--t-soft);margin-bottom:0.6rem"></div>
+      <div id="ev-deadline-info" style="margin-bottom:0.75rem"></div>
+      <button id="ev-wish-btn" class="emp-submit" onclick="openEmpForm()">Заполнить пожелания →</button>
+    </div>
+    <button class="success-back" onclick="goLogin()">← Выйти</button>
+    <div style="height:2rem"></div>
+  </div>
+</div>
+<!-- ════════════════════════════════════════
+     MANAGER SCREEN
+     ════════════════════════════════════════ -->
+<div class="screen" id="screen-manager">
+  <div class="mgr-head">
+    <div class="mgr-brand">ХиВ</div>
+    <div class="mgr-period-lbl" id="mgr-period-lbl"></div>
+    <div class="mgr-sep"></div>
+    <div class="tab-btns">
+      <button class="tab-btn active" data-tab="schedule" onclick="switchTab('schedule')">📅 Расписание</button>
+      <button class="tab-btn" data-tab="wishes" onclick="switchTab('wishes')">💬 Пожелания</button>
+      <button class="tab-btn" data-tab="vacations" onclick="switchTab('vacations')">🏖 Отпуска</button>
+      <button class="tab-btn" data-tab="status" onclick="switchTab('status')">📊 Статус</button>
+      <button class="tab-btn" data-tab="exceptions" onclick="switchTab('exceptions')">⚡ Исключения</button>
+      <button class="tab-btn" data-tab="history" onclick="switchTab('history')">📋 История</button>
+      <button class="tab-btn" data-tab="feedback" onclick="switchTab('feedback')">📩 Анонимки</button>
+      <button class="tab-btn" data-tab="events" onclick="switchTab('events')">🎉 События</button>
+      <button class="tab-btn" data-tab="admin" onclick="switchTab('admin')">⚙️</button>
+    </div>
+  </div>
+  <div class="mgr-body">
+    <div class="mgr-main">
+      <!-- SCHEDULE TAB -->
+      <div class="tab-panel active" id="tab-schedule">
+        <div class="grid-wrap">
+          <table class="sched-tbl" id="sched-tbl"></table>
+        </div>
+      </div>
+      <!-- WISHES TAB -->
+      <div class="tab-panel" id="tab-wishes">
+        <div class="wishes-body" id="wishes-body"></div>
+      </div>
+      <!-- FEEDBACK TAB -->
+      <div class="tab-panel" id="tab-feedback">
+        <div class="anonfb-wrap">
+          <div class="anonfb-header">
+            <h2>Анонимные сообщения</h2>
+            <div class="anonfb-sub">Имена не отображаются. Ответ придёт сотруднику в Telegram от бота.</div>
+          </div>
+          <div id="anonfb-list"><div class="anonfb-empty">Сообщений пока нет</div></div>
+        </div>
+      </div>
+      <!-- EVENTS TAB -->
+      <div class="tab-panel" id="tab-events">
+        <div class="admin-body" style="max-width:720px;">
+          <div class="adm-section">
+            <h3>Управление событиями</h3>
+            <p style="font-size:0.8rem;color:var(--t-soft);margin:0 0 1rem;">Бот автоматически добавляет события когда ты пересылаешь ему сообщение. Здесь можно редактировать вручную.</p>
+
+            <!-- Add form -->
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:1rem;margin-bottom:1.2rem;">
+              <div style="font-size:0.75rem;font-weight:700;color:var(--t-soft);text-transform:uppercase;letter-spacing:.06em;margin-bottom:0.75rem;">Добавить событие</div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.6rem;">
+                <input id="ev-title" placeholder="Название" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;">
+                <input id="ev-date-text" placeholder="Дата (напр. 15 сент., 18:00)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;">
+                <input id="ev-day" placeholder="День (15)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;">
+                <input id="ev-mon" placeholder="Месяц (сен)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;">
+                <select id="ev-type" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;">
+                  <option value="sport">⚽️ Активность</option>
+                  <option value="training">📚 Тренинг</option>
+                  <option value="fun">🍿 Досуг</option>
+                  <option value="corp">🎉 Корпоратив</option>
+                </select>
+                <input id="ev-label" placeholder="Ярлык (⚽️ Активность)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;">
+              </div>
+              <textarea id="ev-desc" placeholder="Описание" rows="2" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;resize:vertical;margin-bottom:0.6rem;"></textarea>
+              <input id="ev-organizer-name" placeholder="Организатор (имя)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;margin-bottom:0.6rem;">
+              <input id="ev-organizer-handle" placeholder="Telegram @handle (без @)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;margin-bottom:0.6rem;">
+              <input id="ev-sheet-url" placeholder="Ссылка на Google Таблицу (необяз.)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;margin-bottom:0.8rem;">
+              <input id="ev-sort-key" placeholder="Ключ сортировки (напр. 2026-09-15)" style="background:rgba(0,0,0,0.06);border:1px solid var(--border);border-radius:8px;padding:0.5rem 0.7rem;font-size:0.82rem;color:var(--t-main);outline:none;width:100%;box-sizing:border-box;margin-bottom:0.8rem;">
+              <button onclick="addEvent()" style="background:#F54029;border:none;border-radius:8px;color:#fff;font-size:0.82rem;font-weight:700;padding:0.55rem 1.2rem;cursor:pointer;">+ Добавить</button>
+            </div>
+
+            <!-- List -->
+            <div id="events-admin-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ADMIN TAB -->
+      <div class="tab-panel" id="tab-admin">
+        <div class="admin-body">
+          <!-- Period config -->
+          <div class="adm-section">
+            <h3>Настройки периода</h3>
+            <div class="adm-row">
+              <div class="adm-f"><label>Месяц</label><input id="cfg-month" placeholder="август"></div>
+              <div class="adm-f"><label>Год</label><input id="cfg-year" type="number" placeholder="2026"></div>
+            </div>
+            <div class="adm-row">
+              <div class="adm-f"><label>День начала</label><input id="cfg-start" type="number" min="1" max="31"></div>
+              <div class="adm-f"><label>День конца</label><input id="cfg-end" type="number" min="1" max="31"></div>
+            </div>
+            <div class="adm-row">
+              <div class="adm-f"><label>PIN менеджера</label><input id="cfg-mpin" maxlength="10" placeholder="0000"></div>
+              <div class="adm-f"><label>API Key ИИ</label><input id="cfg-ckey" type="password" placeholder="(добавите позже)"></div>
+            </div>
+            <div class="adm-row">
+              <div class="adm-f">
+                <label>Дедлайн пожеланий</label>
+                <input id="cfg-deadline" type="datetime-local">
+              </div>
+              <div class="adm-f" style="max-width:160px">
+                <label style="visibility:hidden">—</label>
+                <div style="font-size:0.67rem;color:var(--t-ghost);padding:0.5rem 0">После дедлайна сотрудники<br>не смогут заполнить форму</div>
+              </div>
+            </div>
+            <div class="btn-row">
+              <button class="btn-xs prim" onclick="savePeriodCfg()">Сохранить</button>
+              <button class="btn-xs red" onclick="clearSched()">Очистить расписание</button>
+              <button class="btn-xs red" onclick="clearWishes()">Очистить пожелания</button>
+              <button class="btn-xs red" onclick="clearExceptions()">Удалить исключения</button>
+            </div>
+          </div>
+          <!-- Push Notifications -->
+          <div class="adm-section">
+            <h3>🔔 Push-уведомления</h3>
+            <p style="font-size:0.78rem;color:var(--t-muted);margin-bottom:0.9rem;line-height:1.5">
+              Сотрудники подписываются на уведомления автоматически при первом входе.
+              Нажмите кнопку, чтобы отправить всем напоминание о сменах на <b>завтра</b>.
+            </p>
+            <div class="btn-row">
+              <button class="btn-xs prim" onclick="sendShiftReminders()">📨 Напомнить всем о завтрашних сменах</button>
+            </div>
+            <p style="font-size:0.7rem;color:var(--t-ghost);margin-top:0.6rem">
+              Требует настройки OneSignal — замените YOUR_ONESIGNAL_APP_ID и YOUR_ONESIGNAL_REST_API_KEY в коде
+            </p>
+          </div>
+          <!-- Add employee -->
+          <div class="adm-section">
+            <h3>Добавить сотрудника</h3>
+            <div class="adm-row">
+              <div class="adm-f"><label>Имя</label><input id="ne-name" placeholder="Иван Иванов"></div>
+              <div class="adm-f"><label>PIN</label><input id="ne-pin" maxlength="10" placeholder="1234"></div>
+            </div>
+            <div class="adm-row">
+              <div class="adm-f"><label>Отдел</label>
+                <select id="ne-dept" onchange="syncSub()">
+                  <option value="Официанты">Официанты</option>
+                  <option value="Ранеры">Ранеры</option>
+                </select>
+              </div>
+              <div class="adm-f"><label>Группа</label>
+                <select id="ne-sub">
+                  <option value="ПРО">ПРО</option>
+                  <option value="Офики">Офики</option>
+                  <option value="Ранеры">Ранеры</option>
+                </select>
+              </div>
+              <div class="adm-f" style="max-width:90px;"><label>Макс. вых.</label><input id="ne-maxoff" type="number" value="5" min="0" max="31"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn-xs prim" onclick="addEmp()">+ Добавить</button>
+            </div>
+          </div>
+          <!-- Employee list -->
+          <div class="adm-section">
+            <h3>Сотрудники (<span id="emp-count">0</span>)</h3>
+            <div class="emp-list" id="emp-list-admin"></div>
+          </div>
+        </div>
+      </div>
+      <!-- VACATIONS TAB -->
+      <div class="tab-panel" id="tab-vacations">
+        <div class="vac-wrap" id="vac-body"></div>
+      </div>
+      <!-- STATUS TAB -->
+      <div class="tab-panel" id="tab-status">
+        <div class="status-wrap" id="status-body"></div>
+      </div>
+      <!-- EXCEPTIONS TAB -->
+      <div class="tab-panel" id="tab-exceptions">
+        <div class="exc-wrap" id="exc-body"></div>
+      </div>
+      <!-- HISTORY TAB -->
+      <div class="tab-panel" id="tab-history">
+        <div class="hist-wrap" id="hist-body"><div class="hist-empty">Загрузка...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ══════════════════════════════════════════════════════════
+     JAVASCRIPT
+     ══════════════════════════════════════════════════════════ -->
+<script>
+'use strict';
+/* ──────────────────────────────────────
+   CONSTANTS
+   ────────────────────────────────────── */
+const ZONE_CLR = { 'бар':'#b6d7a8','печка':'#f6b26b','мангал':'#ea9999','лифт':'#9fc5e8' };
+const ZONES = ['бар','печка','мангал','лифт'];
+const WNDS = ['вс','пн','вт','ср','чт','пт','сб'];
+/* ──────────────────────────────────────
+   STATE
+   ────────────────────────────────────── */
+let db        = null;
+let appCfg    = {};       // from Firestore config/main
+let employees = [];       // from Firestore /employees
+let schedData = {};       // {empId: {days:{d:shift}, zones:{d:zone}}}
+let wishesArr = [];       // from Firestore /wishes
+let curUser   = null;     // logged-in employee (or null for manager)
+let isMgr     = false;
+let periodKey = '';
+let unsubSched  = null;   // onSnapshot unsubscribe for schedules
+let unsubWishes = null;   // onSnapshot unsubscribe for wishes
+/* employee form state */
+const empSt = { off: new Set(), strict: new Set(), shifts: new Map() };
+/* popup state */
+let popupEmpId = null, popupDay = null;
+/* ──────────────────────────────────────
+   FIREBASE SETUP
+   ────────────────────────────────────── */
+function fbCfgKey() { return 'hv_firebase_config'; }
+function getStoredFbCfg() {
+  // Конфиг зашит в приложение — экран настройки не нужен
+  return {
+    apiKey:            'AIzaSyBWLlbct__8oKIxsdm-Otl6QxTbKQBRFtA',
+    authDomain:        'scheduletrubnaya.firebaseapp.com',
+    projectId:         'scheduletrubnaya',
+    storageBucket:     'scheduletrubnaya.firebasestorage.app',
+    messagingSenderId: '504028808610',
+    appId:             '1:504028808610:web:1c034b0a2c1932e9a65efb',
+  };
+}
+function saveSetup() {
+  const cfg = {
+    apiKey:            document.getElementById('fb-ak').value.trim(),
+    authDomain:        document.getElementById('fb-ad').value.trim(),
+    projectId:         document.getElementById('fb-pid').value.trim(),
+    storageBucket:     document.getElementById('fb-sb').value.trim(),
+    messagingSenderId: document.getElementById('fb-ms').value.trim(),
+    appId:             document.getElementById('fb-ai').value.trim(),
+  };
+  if (!cfg.apiKey || !cfg.projectId) { toast('Введите хотя бы API Key и Project ID'); return; }
+  localStorage.setItem(fbCfgKey(), JSON.stringify(cfg));
+  location.reload();
+}
+async function initFb() {
+  const cfg = getStoredFbCfg();
+  if (!cfg) { showScr('screen-setup'); hide('loading'); return false; }
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(cfg);
+    db = firebase.firestore();
+    return true;
+  } catch(e) {
+    console.error('Firebase init:', e);
+    showScr('screen-setup'); hide('loading'); return false;
+  }
+}
+/* ──────────────────────────────────────
+   BOOT
+   ────────────────────────────────────── */
+async function boot() {
+  const ok = await initFb();
+  if (!ok) return;
+  try {
+    // Load / create config
+    const cfgDoc = await db.collection('config').doc('main').get();
+    if (cfgDoc.exists) {
+      appCfg = cfgDoc.data();
+    } else {
+      appCfg = {
+        periodStart: 1, periodEnd: 15,
+        month: 'август', year: 2026,
+        managerPin: '0000',
+        claudeApiKey: '',
+        wishDeadline: ''
+      };
+      await db.collection('config').doc('main').set(appCfg);
+    }
+    if (!appCfg.wishDeadline) appCfg.wishDeadline = '';
+    buildPeriodKey();
+    // Load employees
+    const snap = await db.collection('employees').get();
+    employees = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    // Assign order to employees that don't have it yet
+    let needsSave = false;
+    employees.forEach((e, i) => {
+      if (e.order === undefined || e.order === null) { e.order = i * 10; needsSave = true; }
+    });
+    if (needsSave) {
+      const batch = db.batch();
+      employees.filter(e => e.order % 10 === 0 && e.order / 10 < employees.length)
+        .forEach(e => batch.update(db.collection('employees').doc(e.id), { order: e.order }));
+      batch.commit().catch(err => console.error('order save:', err));
+    }
+    employees.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    // Start realtime schedule listener (used by both manager and employee view)
+    resetSchedListener();
+  } catch(e) {
+    console.error('Boot error:', e);
+    toast('Ошибка подключения к Firebase');
+  }
+  hide('loading');
+  showScr('screen-login');
+}
+function buildPeriodKey() {
+  periodKey = `${appCfg.year}_${appCfg.month}_${appCfg.periodStart}-${appCfg.periodEnd}`;
+}
+/* ──────────────────────────────────────
+   SCREEN HELPERS
+   ────────────────────────────────────── */
+function showScr(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function hide(id) { document.getElementById(id).classList.add('hidden'); }
+function show(id) { document.getElementById(id).classList.remove('hidden'); }
+/* ──────────────────────────────────────
+   TOAST
+   ────────────────────────────────────── */
+let _toastTm;
+function toast(msg, dur=2500) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTm);
+  _toastTm = setTimeout(() => el.classList.remove('show'), dur);
+}
+/* ──────────────────────────────────────
+   LOGIN
+   ────────────────────────────────────── */
+let pin = '';
+function np(d) {
+  pin += d;
+  refreshDots();
+}
+function npDel() { if (pin.length) { pin = pin.slice(0,-1); refreshDots(); } }
+function refreshDots(err) {
+  const row = document.getElementById('pin-row');
+  if (!pin.length) {
+    row.innerHTML = '<div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>';
+    return;
+  }
+  row.innerHTML = Array.from({length: pin.length}, (_,i) =>
+    `<div class="pin-dot${err ? ' err' : ' on'}"></div>`
+  ).join('');
+}
+async function checkPin() {
+  if (!pin.length) return;
+  const entered = pin;
+  pin = ''; refreshDots();
+  // Manager
+  if (entered === String(appCfg.managerPin)) {
+    isMgr = true; curUser = null;
+    await loadMgr();
+    return;
+  }
+  // Employee
+  const emp = employees.find(e => e.pin === entered);
+  if (emp) {
+    isMgr = false; curUser = emp;
+    openEmpView();
+    subscribeEmployeePush(emp); // Register for push notifications
+    return;
+  }
+  // Wrong
+  const hint = document.getElementById('login-hint');
+  hint.textContent = 'Неверный PIN';
+  refreshDots(true);
+  setTimeout(() => { hint.textContent=''; refreshDots(); }, 1800);
+}
+function goLogin() { showScr('screen-login'); }
+/* ──────────────────────────────────────
+   EMPLOYEE FORM
+   ────────────────────────────────────── */
+function monthNum(m) {
+  const map = {
+    'январь':1,'февраль':2,'март':3,'апрель':4,'май':5,'июнь':6,
+    'июль':7,'август':8,'сентябрь':9,'октябрь':10,'ноябрь':11,'декабрь':12,
+    'января':1,'февраля':2,'марта':3,'апреля':4,'мая':5,'июня':6,
+    'июля':7,'августа':8,'сентября':9,'октября':10,'ноября':11,'декабря':12
+  };
+  return map[m?.toLowerCase()] || 8;
+}
+/* ── Employee form globals ── */
+let empPeriod = {};  // {s, e, mn, yr}
+const SHIFT_OPTS_WAITER = ['', 'У', 'Д12', 'В', 'У-Д12', 'Д12-В', 'Любая'];
+const SHIFT_OPTS_RUNNER = ['', 'Д12', 'В', 'Д12-В', 'Любая'];
+function openEmpForm() {
+  if (isDeadlinePassed()) { toast('Приём пожеланий закрыт'); return; }
+  const { periodStart:s, periodEnd:e, month, year } = appCfg;
+  const mn = monthNum(month);
+  empPeriod = { s, e, mn, yr: year };
+  document.getElementById('emp-period').textContent = `${s}–${e} ${month} ${year}`;
+  document.getElementById('emp-name-hdr').textContent = curUser.name.split(' ')[0];
+  document.getElementById('max-off-lbl').textContent = curUser.maxConsecutive ?? 3;
+  empSt.off.clear(); empSt.strict.clear(); empSt.shifts.clear();
+  document.getElementById('emp-comment').value = '';
+  closeConfirm();
+  buildOffGrid();
+  buildQuickBtns();
+  renderShiftList();
+  showScr('screen-employee');
+}
+/* ── Off-days grid ── */
+function buildOffGrid() {
+  const { s, e, mn, yr } = empPeriod;
+  const grid = document.getElementById('off-grid');
+  grid.innerHTML = '';
+  const vac = new Set(curUser.vacationDays || []);
+  for (let d = s; d <= e; d++) {
+    const dt = new Date(yr, mn-1, d);
+    const dw = WNDS[dt.getDay()];
+    const isV = vac.has(d);
+    const cell = document.createElement('div');
+    if (isV) {
+      cell.className = 'day-cell vac';
+      cell.innerHTML = `<div class="dc-num">${d}</div><div class="dc-day">${dw}</div><div class="dc-lbl">О</div>`;
+    } else {
+      cell.dataset.d = d;
+      renderOffCell(cell, d, mn, yr);
+      cell.addEventListener('click', () => toggleOff(d, cell, mn, yr));
+    }
+    grid.appendChild(cell);
+  }
+}
+function renderOffCell(cell, d, mn, yr) {
+  const dt = new Date(yr, mn-1, d);
+  const dw = WNDS[dt.getDay()];
+  const isWknd = ['пт','сб','вс'].includes(dw);
+  const isHard = empSt.strict.has(d);
+  const isSoft = empSt.off.has(d);
+  cell.className = 'day-cell';
+  if (isHard) cell.classList.add('dc-hard');
+  else if (isSoft) cell.classList.add('dc-soft');
+  const lbl = isHard ? '🔒 выходной' : isSoft ? 'желательно' : '–';
+  cell.innerHTML = `<div class="dc-num">${d}</div><div class="dc-day">${dw}</div><div class="dc-lbl" ${(!isHard&&!isSoft)?'style="opacity:0.25"':''}>${lbl}</div>`;
+}
+function countConsecIfAdd(d) {
+  const allOff = new Set([...empSt.off, ...empSt.strict, d]);
+  let run = 1;
+  let l = d-1; while (allOff.has(l)) { run++; l--; }
+  let r = d+1; while (allOff.has(r)) { run++; r++; }
+  return run;
+}
+function toggleOff(d, cell, mn, yr) {
+  const maxConsec = curUser.maxConsecutive ?? 3;
+  const isHard = empSt.strict.has(d);
+  const isSoft = empSt.off.has(d);
+  if (!isSoft && !isHard) {
+    // neutral → soft
+    if (countConsecIfAdd(d) > maxConsec) { toast(`Максимум ${maxConsec} выходных подряд`); return; }
+    empSt.off.add(d);
+  } else if (isSoft) {
+    // soft → hard
+    empSt.off.delete(d);
+    if (countConsecIfAdd(d) > maxConsec) { toast(`Максимум ${maxConsec} выходных подряд`); empSt.off.add(d); return; }
+    empSt.strict.add(d);
+  } else {
+    // hard → neutral
+    empSt.strict.delete(d);
+  }
+  renderOffCell(cell, d, mn, yr);
+  renderShiftList();   // update shift list when off-days change
+}
+/* ── Shift preference list ── */
+function buildQuickBtns() {
+  const isRunner = curUser.dept === 'Ранеры';
+  const btns = isRunner
+    ? [{lbl:'Всё Д12', val:'Д12'},{lbl:'Всё вечер', val:'В'},{lbl:'Д12/В', val:'alt-Д12-В'},{lbl:'Очистить', val:'clear', cls:'reset-q'}]
+    : [{lbl:'Всё утро', val:'У'},{lbl:'Всё Д12', val:'Д12'},{lbl:'Всё вечер', val:'В'},
+       {lbl:'У/Д12', val:'alt-У-Д12'},{lbl:'Д12/В', val:'alt-Д12-В'},{lbl:'Очистить', val:'clear', cls:'reset-q'}];
+  const wrap = document.getElementById('quick-btns');
+  wrap.innerHTML = btns.map(b =>
+    `<button class="qbtn ${b.cls||''}" onclick="applyQuick('${b.val}')">${b.lbl}</button>`
+  ).join('');
+}
+function applyQuick(val) {
+  const { s, e, mn, yr } = empPeriod;
+  const vac = new Set(curUser.vacationDays || []);
+  const activeDays = [];
+  for (let d = s; d <= e; d++) {
+    if (!vac.has(d)) activeDays.push(d);
+  }
+  if (val === 'clear') {
+    empSt.shifts.clear();
+  } else if (val.startsWith('alt-')) {
+    const combined = val.slice(4); // e.g. 'У-Д12' or 'Д12-В'
+    activeDays.forEach(d => empSt.shifts.set(d, combined));
+  } else {
+    activeDays.forEach(d => empSt.shifts.set(d, val));
+  }
+  renderShiftList();
+}
+function renderShiftList() {
+  const { s, e, mn, yr } = empPeriod;
+  const isRunner = curUser.dept === 'Ранеры';
+  const opts = isRunner ? SHIFT_OPTS_RUNNER : SHIFT_OPTS_WAITER;
+  const vac = new Set(curUser.vacationDays || []);
+  const list = document.getElementById('shift-list');
+  let html = '';
+  for (let d = s; d <= e; d++) {
+    if (vac.has(d)) continue;
+    const dt = new Date(yr, mn-1, d);
+    const dw = WNDS[dt.getDay()];
+    const isWknd = ['пт','сб','вс'].includes(dw);
+    const isHard = empSt.strict.has(d);
+    const cur = empSt.shifts.get(d) || '';
+    const optHtml = opts.map(o => `<option value="${o}" ${o===cur?'selected':''}>${o || '— не выбрано —'}</option>`).join('');
+    html += `<div class="shift-row${isHard ? ' is-hard' : ''}" data-d="${d}">
+      <span class="shift-row-date">${d}</span>
+      <span class="shift-row-dow">${dw}</span>
+      <select class="shift-sel" onchange="empSt.shifts.set(${d}, this.value||''); if(!this.value) empSt.shifts.delete(${d})">${optHtml}</select>
+    </div>`;
+  }
+  list.innerHTML = html || '<div style="font-size:0.78rem;color:var(--t-ghost);text-align:center;padding:1rem">Нет доступных дней</div>';
+}
+/* ── Confirmation screen ── */
+function showConfirm() {
+  const { s, e, mn, yr } = empPeriod;
+  const vac = new Set(curUser.vacationDays || []);
+  const fmtDay = d => {
+    const dw = WNDS[new Date(yr, mn-1, d).getDay()];
+    return `<span class="wd-tag ${empSt.strict.has(d)?'wd-strict':'wd-off'}">${d} ${dw}</span>`;
+  };
+  const offDays = [...empSt.off].sort((a,b)=>a-b);
+  const strictDays = [...empSt.strict].sort((a,b)=>a-b);
+  const shifts = [...empSt.shifts.entries()].filter(([,v])=>v).sort((a,b)=>a[0]-b[0]);
+  document.getElementById('cnf-off').innerHTML = offDays.length ? offDays.map(fmtDay).join('') : '<span class="cnf-empty">нет</span>';
+  document.getElementById('cnf-strict').innerHTML = strictDays.length ? strictDays.map(fmtDay).join('') : '<span class="cnf-empty">нет</span>';
+  document.getElementById('cnf-shifts').innerHTML = shifts.length
+    ? shifts.map(([d,v]) => `<span class="wd-tag" style="background:rgba(26,18,10,0.07);color:var(--t-soft)">${d}→${v}</span>`).join('')
+    : '<span class="cnf-empty">нет</span>';
+  const comment = document.getElementById('emp-comment').value.trim();
+  const cwrap = document.getElementById('cnf-comment-wrap');
+  if (comment) { cwrap.style.display = ''; document.getElementById('cnf-comment').textContent = `"${comment}"`; }
+  else cwrap.style.display = 'none';
+  document.getElementById('emp-confirm').classList.add('open');
+}
+function closeConfirm() {
+  const el = document.getElementById('emp-confirm');
+  if (el) el.classList.remove('open');
+}
+async function submitWish() {
+  const comment = document.getElementById('emp-comment').value.trim();
+  const data = {
+    employeeId  : curUser.id,
+    name        : curUser.name,
+    dept        : curUser.dept,
+    sub         : curUser.sub || curUser.dept,
+    offDays     : [...empSt.off],
+    strictDays  : [...empSt.strict],
+    dayShifts   : Object.fromEntries(empSt.shifts),
+    shiftGroups : [],
+    comment,
+    submittedAt : new Date().toISOString(),
+    period      : periodKey
+  };
+  try {
+    await db.collection('wishes').doc(`${periodKey}_${curUser.id}`).set(data);
+    showScr('screen-success');
+  } catch(e) {
+    console.error(e);
+    toast('Ошибка отправки — попробуйте ещё раз');
+  }
+}
+/* ──────────────────────────────────────
+   MANAGER — LOAD
+   ────────────────────────────────────── */
+async function loadMgr() {
+  document.getElementById('loading').classList.remove('hidden');
+  try {
+    // Initial wishes load (non-fatal — если нет прав на wishes, всё равно входим)
+    try {
+      const wSnap = await db.collection('wishes').where('period','==',periodKey).get();
+      wishesArr   = wSnap.docs.map(d => d.data());
+    } catch(we) {
+      console.warn('wishes load failed (check Firestore Rules):', we);
+      wishesArr = [];
+    }
+    const steps = [
+      ['renderMgrPeriodLbl', renderMgrPeriodLbl],
+      ['renderSchedGrid',    renderSchedGrid],
+      ['renderWishes',       renderWishes],
+      ['renderAdmin',        renderAdmin],
+      ['renderStatus',       renderStatus],
+      ['renderExceptions',   renderExceptions],
+      ['renderVacations',    renderVacations],
+    ];
+    for (const [name, fn] of steps) {
+      try { fn(); } catch(se) { console.error(`loadMgr step [${name}]:`, se); throw se; }
+    }
+    showScr('screen-manager');
+    resetWishesListener();
+  } catch(e) {
+    console.error('loadMgr FINAL:', e);
+    toast('Ошибка загрузки — открой консоль браузера (F12) и скопируй ошибку');
+    showScr('screen-login');
+  }
+  document.getElementById('loading').classList.add('hidden');
+}
+function renderMgrPeriodLbl() {
+  const { periodStart:s, periodEnd:e, month, year } = appCfg;
+  document.getElementById('mgr-period-lbl').textContent = `${s}–${e} ${month} ${year}`;
+}
+/* ──────────────────────────────────────
+   SCHEDULE GRID
+   ────────────────────────────────────── */
+const NORMS = {
+  waiter: { weekday:{У:3,Д12:4,В:3}, weekend:{У:4,Д12:3,В:3} },
+  runner: { weekday:{Д12:4,В:2},     weekend:{Д12:4,В:3} }
+};
+function renderSchedGrid() {
+  const { periodStart:s, periodEnd:e, month, year } = appCfg;
+  const mn   = monthNum(month);
+  const days = [];
+  for (let d=s; d<=e; d++) {
+    const dt = new Date(year, mn-1, d);
+    days.push({ d, name: WNDS[dt.getDay()], wknd: ['пт','сб','вс'].includes(WNDS[dt.getDay()]) });
+  }
+  const tbl = document.getElementById('sched-tbl');
+  // Header
+  let h = '<thead><tr>';
+  h += '<th class="th-name">Сотрудник</th>';
+  days.forEach(({d,name,wknd}) => {
+    h += `<th style="${wknd?'color:rgba(160,80,0,0.8)':''}">${d}<br><span style="font-size:0.58em;font-weight:400;">${name}</span></th>`;
+  });
+  h += '</tr></thead>';
+  // Body
+  const groups = [
+    { label:'— ПРО',       filter: e => e.sub==='ПРО' },
+    { label:'— Официанты', filter: e => e.sub==='Офики' },
+    { label:'— Ранеры',    filter: e => e.sub==='Ранеры' || (e.dept==='Ранеры' && !e.sub) },
+  ];
+  h += '<tbody>';
+  groups.forEach(({label, filter}) => {
+    const grpEmps = employees.filter(filter);
+    if (!grpEmps.length) return;
+    h += `<tr class="grp-row"><td colspan="${days.length+1}">${label}</td></tr>`;
+    grpEmps.forEach(emp => {
+      const es    = schedData[emp.id] || { days:{}, zones:{} };
+      const wish  = wishesArr.find(w => w.employeeId === emp.id);
+      const wOff    = new Set(wish?.offDays    || []);
+      const wStrict = new Set(wish?.strictDays || []);
+      const wShifts = wish?.dayShifts || {};
+      const vac   = new Set(emp.vacationDays  || []);
+      h += '<tr>';
+      const noteTitle = emp.managerNote ? `${emp.name}\n📝 ${emp.managerNote}` : emp.name;
+      const noteMarker = emp.managerNote ? ' <span style="color:var(--gold);font-size:0.5rem;vertical-align:top">●</span>' : '';
+      h += `<td class="td-name" title="${noteTitle}">${emp.name}${noteMarker}</td>`;
+      days.forEach(({d,wknd}) => {
+        // Vacation cell
+        if (vac.has(d)) {
+          h += `<td class="cell cell-vacation${wknd?' col-wknd':''}" data-empid="${emp.id}" data-day="${d}" data-shift="" data-zone="" data-dept="${emp.dept}" onclick="openPopup(this,event)">`;
+          h += `<span class="cell-vac-s">О</span>`;
+          h += '</td>';
+          return;
+        }
+        const shift = es.days?.[d] || '';
+        const zone  = es.zones?.[d] || '';
+        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
+        const zClr  = zone ? ZONE_CLR[zone] : '';
+        // Conflict detection
+        const isConflict   = !!shift && wStrict.has(d);
+        const isSoftConf   = !!shift && !wStrict.has(d) && wOff.has(d);
+        let wishCls = '';
+        if (!shift) {
+          if (wStrict.has(d)) wishCls = ' wish-strict';
+          else if (wOff.has(d)) wishCls = ' wish-soft';
+        }
+        const conflictCls = isConflict ? ' cell-conflict' : isSoftConf ? ' cell-soft-conflict' : '';
+        // Build wish info for popup title
+        let wishTitle = '';
+        if (wStrict.has(d))   wishTitle = shift ? '⚠ Конфликт: просил выходной' : 'Просит: обязательно выходной';
+        else if (wOff.has(d)) wishTitle = shift ? '⚡ Просил желательно выходной' : 'Просит: желательно выходной';
+        else if (wShifts[d])  wishTitle = `Просит смену: ${wShifts[d]}`;
+        h += `<td class="cell ${shCls}${wishCls}${conflictCls}${wknd?' col-wknd':''}" style="position:relative"
+          data-empid="${emp.id}" data-day="${d}" data-shift="${shift}" data-zone="${zone}"
+          data-dept="${emp.dept}" data-wish="${wishTitle.replace(/"/g,'&quot;')}"
+          onclick="openPopup(this,event)">`;
+        if (isConflict) h += `<span class="conflict-icon">⚠</span>`;
+        if (shift) {
+          h += `<span class="cell-s">${shift}</span>`;
+          if (zone) h += `<span class="cell-z" style="color:${zClr}">${zone}</span>`;
+        } else if (wStrict.has(d)) {
+          h += `<span class="cell-s" style="font-size:0.55rem;color:rgba(200,60,80,0.7)">ВЫХОД</span>`;
+        } else if (wOff.has(d)) {
+          h += `<div class="wish-dot"></div>`;
+        }
+        h += '</td>';
+      });
+      h += '</tr>';
+    });
+  });
+  h += '</tbody>';
+  // ── Coverage norms footer ──
+  const waiters = employees.filter(e => e.dept !== 'Ранеры' && e.sub !== 'Ранеры');
+  const runners = employees.filter(e => e.dept === 'Ранеры' || e.sub === 'Ранеры');
+  function normSpan(actual, norm) {
+    if (norm === undefined) return '';
+    const cls = actual === 0 ? 'tot-neutral' : actual < norm ? 'tot-low' : actual > norm ? 'tot-over' : 'tot-ok';
+    return `<span class="${cls}" title="${actual} из ${norm}">${actual}/${norm}</span>`;
+  }
+  h += '<tfoot>';
+  // Зал row
+  h += '<tr>';
+  h += '<td class="td-name tot-lbl">Зал</td>';
+  days.forEach(({d, wknd}) => {
+    const norms = NORMS.waiter[wknd ? 'weekend' : 'weekday'];
+    const c = {У:0,Д12:0,В:0};
+    waiters.forEach(emp => {
+      const vac = new Set(emp.vacationDays || []);
+      if (!vac.has(d)) { const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++; }
+    });
+    h += `<td class="tot-cell">${normSpan(c.У,norms.У)}<br>${normSpan(c.Д12,norms.Д12)}<br>${normSpan(c.В,norms.В)}</td>`;
+  });
+  h += '</tr>';
+  // Ранеры row
+  h += '<tr>';
+  h += '<td class="td-name tot-lbl">Ранеры</td>';
+  days.forEach(({d, wknd}) => {
+    const norms = NORMS.runner[wknd ? 'weekend' : 'weekday'];
+    const c = {Д12:0,В:0};
+    runners.forEach(emp => {
+      const vac = new Set(emp.vacationDays || []);
+      if (!vac.has(d)) { const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++; }
+    });
+    h += `<td class="tot-cell">${normSpan(c.Д12,norms.Д12)}<br>${normSpan(c.В,norms.В)}</td>`;
+  });
+  h += '</tr>';
+  h += '</tfoot>';
+  tbl.innerHTML = h;
+}
+/* ──────────────────────────────────────
+   CELL POPUP
+   ────────────────────────────────────── */
+function openPopup(cell, evt) {
+  evt.stopPropagation();
+  const empId  = cell.dataset.empid;
+  const day    = parseInt(cell.dataset.day);
+  const curSh  = cell.dataset.shift;
+  const curZ   = cell.dataset.zone;
+  const isRun  = cell.dataset.dept === 'Ранеры';
+  const wishInfo = cell.dataset.wish || '';
+  popupEmpId = empId; popupDay = day;
+  const popup = document.getElementById('cell-popup');
+  const shifts = isRun ? ['Д12','В',''] : ['У','Д12','В',''];
+  let html = '';
+  // Show what employee wished for (if any)
+  if (wishInfo) {
+    html += `<div style="font-size:0.65rem;color:var(--t-ghost);padding:0.3rem 0.7rem 0.1rem;font-style:italic">${wishInfo}</div>`;
+    html += '<div class="pop-div"></div>';
+  }
+  html += shifts.map(s =>
+    `<button class="pop-shift ${s===curSh?'cur':''}" onclick="setShift('${s}')">${s||'Выходной'}</button>`
+  ).join('');
+  html += '<div class="pop-div"></div>';
+  html += '<div class="pop-zone-lbl">Зона</div>';
+  html += '<div class="pop-zones">';
+  ZONES.forEach(z => {
+    html += `<span class="pop-z ${z===curZ?'cur-z':''}"
+      style="background:${ZONE_CLR[z]}"
+      onclick="setZone('${z}')">${z}</span>`;
+  });
+  html += `<span class="pop-z clr-z" onclick="setZone('')">✕</span>`;
+  html += '</div>';
+  popup.innerHTML = html;
+  // Position
+  const r = cell.getBoundingClientRect();
+  const pw = 156;
+  let left = r.left;
+  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  popup.style.left = left + 'px';
+  popup.style.top  = Math.min(r.bottom + 4, window.innerHeight - 220) + 'px';
+  popup.classList.add('open');
+}
+document.addEventListener('click', () => {
+  document.getElementById('cell-popup').classList.remove('open');
+});
+document.getElementById('cell-popup').addEventListener('click', e => e.stopPropagation());
+async function setShift(shift) {
+  document.getElementById('cell-popup').classList.remove('open');
+  if (!schedData[popupEmpId]) schedData[popupEmpId] = { days:{}, zones:{} };
+  schedData[popupEmpId].days[popupDay] = shift;
+  await saveSched();
+  renderSchedGrid();
+}
+async function setZone(zone) {
+  document.getElementById('cell-popup').classList.remove('open');
+  if (!schedData[popupEmpId]) schedData[popupEmpId] = { days:{}, zones:{} };
+  schedData[popupEmpId].zones[popupDay] = zone;
+  await saveSched();
+  renderSchedGrid();
+}
+async function saveSched() {
+  try {
+    await db.collection('schedules').doc(periodKey).set({ cells: schedData });
+  } catch(e) {
+    console.error('saveSched:', e);
+    toast('Ошибка сохранения');
+  }
+}
+/* ──────────────────────────────────────
+   TABS
+   ────────────────────────────────────── */
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  document.getElementById('tab-' + tab).classList.add('active');
+  if (tab === 'history') renderHistory();
+  if (tab === 'events')  loadAdminEvents();
+}
+/* ──────────────────────────────────────
+   WISHES
+   ────────────────────────────────────── */
+function renderWishes() {
+  const body = document.getElementById('wishes-body');
+  if (!wishesArr.length) {
+    body.innerHTML = '<div class="wish-empty">Пожелания ещё не поступали</div>';
+    return;
+  }
+  const mn = monthNum(appCfg.month);
+  const yr = appCfg.year;
+  body.innerHTML = wishesArr.map(w => {
+    const offT   = (w.offDays||[]).map(d => {
+      const dw = WNDS[new Date(yr,mn-1,d).getDay()];
+      return `<span class="wd-tag wd-off">${d} ${dw}</span>`;
+    }).join('');
+    const strT   = (w.strictDays||[]).map(d => {
+      const dw = WNDS[new Date(yr,mn-1,d).getDay()];
+      return `<span class="wd-tag wd-strict">${d} ${dw} !</span>`;
+    }).join('');
+    const shInfo = (w.shiftGroups||[]).filter(sg=>sg.pref!=='any')
+      .map(sg=>`${sg.days.join(',')}→${sg.pref}`).join(' | ');
+    // Per-day shifts from new system
+    const dayShiftInfo = w.dayShifts
+      ? Object.entries(w.dayShifts).map(([d,s])=>`${d}→${s}`).join(' ')
+      : '';
+    const time   = w.submittedAt
+      ? new Date(w.submittedAt).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})
+      : '';
+    // Manager note for this employee
+    const empRec = employees.find(e=>e.name===w.name || e.id===w.employeeId);
+    const mgrNote = empRec?.managerNote || '';
+    return `<div class="wish-card">
+      <div class="wc-head">
+        <div>
+          <div class="wc-name">${w.name}</div>
+          <div class="wc-meta">${w.sub||w.dept}</div>
+        </div>
+        <div class="wc-time">${time}</div>
+      </div>
+      ${(offT||strT) ? `<div class="wc-days">${offT}${strT}</div>` : ''}
+      ${dayShiftInfo ? `<div class="wc-shifts">Смены: ${dayShiftInfo}</div>` : shInfo ? `<div class="wc-shifts">Смены: ${shInfo}</div>` : ''}
+      ${w.comment ? `<div class="wc-comment">"${w.comment}"</div>` : ''}
+      ${mgrNote ? `<div class="wc-mgr-note">📝 ${mgrNote}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+/* ──────────────────────────────────────
+   STATUS TAB
+   ────────────────────────────────────── */
+function renderStatus() {
+  const body = document.getElementById('status-body');
+  const submitted = new Set(wishesArr.map(w => w.employeeId));
+  const missing = employees.filter(e => !submitted.has(e.id));
+  const done = employees.filter(e => submitted.has(e.id));
+  const missingHtml = missing.map(e =>
+    `<div class="status-row missing">
+      <span class="sr-name">${e.name}</span>
+      <span class="sr-sub">${e.sub||e.dept}</span>
+    </div>`
+  ).join('');
+  const doneHtml = done.map(e => {
+    const w = wishesArr.find(w => w.employeeId === e.id);
+    const t = w?.submittedAt ? new Date(w.submittedAt).toLocaleString('ru',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+    return `<div class="status-row done">
+      <span class="sr-name">${e.name}</span>
+      <span class="sr-sub">${e.sub||e.dept}</span>
+      <span class="sr-time">${t}</span>
+    </div>`;
+  }).join('');
+  body.innerHTML = `
+    <div class="status-header">
+      <div class="sh-count">${missing.length}</div>
+      <div class="sh-label">не заполнили пожелания</div>
+    </div>
+    <div class="status-section">
+      <div class="ss-title">Ожидаем (${missing.length})</div>
+      ${missingHtml || '<div class="ss-empty">Все заполнили 🎉</div>'}
+    </div>
+    <div class="status-section">
+      <div class="ss-title">Готово (${done.length})</div>
+      ${doneHtml || '<div class="ss-empty">Пока никто не заполнил</div>'}
+    </div>
+  `;
+}
+/* ──────────────────────────────────────
+   EXCEPTIONS TAB
+   ────────────────────────────────────── */
+function renderExceptions() {
+  const body = document.getElementById('exc-body');
+  body.innerHTML = `
+    <div class="exc-header">
+      <div class="exc-title">Исключения по сотрудникам</div>
+      <div class="exc-desc">Индивидуальные ограничения и заметки. Сохраняется в базу сразу.</div>
+    </div>
+    <div class="exc-search-wrap">
+      <input class="exc-search" id="exc-search" placeholder="🔍 Поиск по имени..." oninput="filterExceptions()">
+    </div>
+    <div class="exc-list">
+      ${employees.map(emp => `
+        <div class="exc-row" id="exc-${emp.id}" data-name="${emp.name.toLowerCase()}">
+          <div class="exc-name">${emp.name}</div>
+          <div class="exc-sub-tag">${emp.sub||emp.dept}</div>
+          <div class="exc-fields">
+            <div class="exc-f">
+              <label>Макс. вых. подряд</label>
+              <input type="number" class="exc-consec" id="ec-${emp.id}" value="${emp.maxConsecutive??3}" min="1" max="31" style="width:70px">
+            </div>
+            <div class="exc-f exc-f-note">
+              <label>Заметка / исключение</label>
+              <input type="text" class="exc-note" id="en-${emp.id}" value="${(emp.managerNote||'').replace(/"/g,'&quot;')}" placeholder="Любое примечание...">
+            </div>
+            <button class="btn-xs prim" onclick="saveException('${emp.id}')">Сохранить</button>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+function filterExceptions() {
+  const q = (document.getElementById('exc-search')?.value || '').toLowerCase();
+  document.querySelectorAll('.exc-row').forEach(row => {
+    const name = row.dataset.name || '';
+    row.style.display = name.includes(q) ? '' : 'none';
+  });
+}
+async function saveException(id) {
+  const emp = employees.find(e=>e.id===id);
+  if (!emp) return;
+  const maxConsecutive = Math.max(1, parseInt(document.getElementById('ec-'+id).value)||3);
+  const managerNote = document.getElementById('en-'+id).value.trim();
+  try {
+    await db.collection('employees').doc(id).update({ maxConsecutive, managerNote });
+    emp.maxConsecutive = maxConsecutive;
+    emp.managerNote = managerNote;
+    renderAdmin(); renderSchedGrid();
+    toast(`${emp.name.split(' ')[0]} сохранено`);
+  } catch(e) { toast('Ошибка'); }
+}
+/* ──────────────────────────────────────
+   ADMIN
+   ────────────────────────────────────── */
+function renderAdmin() {
+  document.getElementById('cfg-month').value    = appCfg.month || '';
+  document.getElementById('cfg-year').value     = appCfg.year  || 2026;
+  document.getElementById('cfg-start').value    = appCfg.periodStart || 1;
+  document.getElementById('cfg-end').value      = appCfg.periodEnd   || 15;
+  document.getElementById('cfg-mpin').value     = appCfg.managerPin  || '';
+  document.getElementById('cfg-ckey').value     = appCfg.claudeApiKey || '';
+  const dlEl = document.getElementById('cfg-deadline');
+  if (dlEl) dlEl.value = appCfg.wishDeadline || '';
+  document.getElementById('emp-count').textContent = employees.length;
+  const list = document.getElementById('emp-list-admin');
+  const ADMIN_GROUPS = [
+    { label: 'ПРО',       filter: e => (e.sub || e.dept) === 'ПРО' },
+    { label: 'Официанты', filter: e => (e.sub || e.dept) === 'Офики' },
+    { label: 'Ранеры',    filter: e => (e.sub || e.dept) === 'Ранеры' || (e.dept === 'Ранеры' && !e.sub) },
+  ];
+  function empRow(emp, grpList) {
+    const curSub  = emp.sub || emp.dept;
+    const hasNote = !!(emp.managerNote);
+    const grpIdx  = grpList.findIndex(e => e.id === emp.id);
+    const isFirst = grpIdx === 0;
+    const isLast  = grpIdx === grpList.length - 1;
+    return `<div class="emp-list-row" id="elr-${emp.id}">
+      <div class="elr-order">
+        <button class="elr-ord-btn" onclick="moveEmp('${emp.id}',-1)" ${isFirst?'disabled':''} title="Выше">▲</button>
+        <button class="elr-ord-btn" onclick="moveEmp('${emp.id}',1)"  ${isLast ?'disabled':''} title="Ниже">▼</button>
+      </div>
+      <div class="elr-name" id="elr-name-${emp.id}" title="Нажми для редактирования" onclick="startRenameEmp('${emp.id}')" style="cursor:pointer;">${emp.name}</div>
+      <select class="sub-sel" onchange="changeSub('${emp.id}', this.value)">
+        <option value="ПРО"    ${curSub==='ПРО'   ?'selected':''}>ПРО</option>
+        <option value="Офики"  ${curSub==='Офики'  ?'selected':''}>Офики</option>
+        <option value="Ранеры" ${curSub==='Ранеры' ?'selected':''}>Ранеры</option>
+      </select>
+      <div class="elr-pin" onclick="changePin('${emp.id}')" title="Изменить PIN">🔑 ${emp.pin}</div>
+      <span class="note-btn ${hasNote?'has-note':''}" onclick="editNote('${emp.id}')" title="${hasNote?'Заметка: '+emp.managerNote:'Добавить заметку'}">📝</span>
+      <button class="btn-xs" onclick="editVac('${emp.id}')">Отпуск</button>
+      <button class="btn-xs" onclick="openAchPanel('${emp.id}')" title="Ачивки и задания">🏅</button>
+      <button class="btn-xs red" onclick="removeEmp('${emp.id}','${emp.name.replace(/'/g,'\\\'')}')" title="Удалить">✕</button>
+    </div>`;
+  }
+  let html = '';
+  ADMIN_GROUPS.forEach(grp => {
+    const grpList = employees.filter(grp.filter);
+    if (!grpList.length) return;
+    html += `<div class="emp-grp-hdr">${grp.label}</div>`;
+    html += grpList.map(emp => empRow(emp, grpList)).join('');
+  });
+  list.innerHTML = html;
+}
+function syncSub() {
+  const dept = document.getElementById('ne-dept').value;
+  const sub  = document.getElementById('ne-sub');
+  if (dept === 'Ранеры') sub.value = 'Ранеры';
+  else if (sub.value === 'Ранеры') sub.value = 'ПРО';
+}
+async function savePeriodCfg() {
+  const upd = {
+    month:        document.getElementById('cfg-month').value.trim(),
+    year:         parseInt(document.getElementById('cfg-year').value),
+    periodStart:  parseInt(document.getElementById('cfg-start').value),
+    periodEnd:    parseInt(document.getElementById('cfg-end').value),
+    managerPin:   document.getElementById('cfg-mpin').value.trim(),
+    claudeApiKey: document.getElementById('cfg-ckey').value.trim(),
+    wishDeadline: document.getElementById('cfg-deadline').value || '',
+  };
+  if (!upd.month || isNaN(upd.year) || isNaN(upd.periodStart) || isNaN(upd.periodEnd)) {
+    toast('Заполните все поля'); return;
+  }
+  try {
+    await db.collection('config').doc('main').update(upd);
+    Object.assign(appCfg, upd);
+    buildPeriodKey();
+    // Перезагружаем данные для нового периода через listeners
+    const wSnap = await db.collection('wishes').where('period','==',periodKey).get();
+    wishesArr = wSnap.docs.map(d => d.data());
+    resetSchedListener();
+    resetWishesListener();
+    renderMgrPeriodLbl();
+    renderSchedGrid();
+    renderWishes();
+    renderStatus();
+    renderVacations();
+    toast('Настройки сохранены');
+  } catch(e) { toast('Ошибка сохранения'); }
+}
+async function addEmp() {
+  const name   = document.getElementById('ne-name').value.trim();
+  const pin    = document.getElementById('ne-pin').value.trim();
+  const dept   = document.getElementById('ne-dept').value;
+  const sub    = document.getElementById('ne-sub').value;
+  const maxOff = parseInt(document.getElementById('ne-maxoff').value) || 5;
+  if (!name) { toast('Введите имя'); return; }
+  if (!/^\d{2,}$/.test(pin)) { toast('PIN — минимум 2 цифры'); return; }
+  if (employees.some(e => e.pin === pin)) { toast('Этот PIN уже занят'); return; }
+  const maxOrder = employees.length ? Math.max(...employees.map(e => e.order ?? 0)) : 0;
+  const data = { name, pin, dept, sub, maxOff, vacationDays: [], order: maxOrder + 10 };
+  try {
+    const ref = await db.collection('employees').add(data);
+    employees.push({ id: ref.id, ...data });
+    document.getElementById('ne-name').value = '';
+    document.getElementById('ne-pin').value  = '';
+    renderAdmin();
+    renderSchedGrid();
+    renderStatus();
+    renderExceptions();
+    toast(`${name} добавлен`);
+  } catch(e) { toast('Ошибка добавления'); }
+}
+async function removeEmp(id, name) {
+  if (!confirm(`Удалить ${name}?`)) return;
+  try {
+    await db.collection('employees').doc(id).delete();
+    employees = employees.filter(e => e.id !== id);
+    renderAdmin();
+    renderSchedGrid();
+    renderStatus();
+    renderExceptions();
+    toast(`${name} удалён`);
+  } catch(e) { toast('Ошибка удаления'); }
+}
+// ── АЧ ИВКИ / ЗАДАНИЯ ──
+let _achEmpId = null;
+
+async function openAchPanel(id) {
+  _achEmpId = id;
+  const emp = employees.find(e => e.id === id);
+  if (!emp) return;
+  document.getElementById('ach-panel-title').textContent = '🏅 ' + emp.name;
+  document.getElementById('ach-backdrop').style.display = '';
+  // Всегда тянем свежие данные из Firestore, чтобы видеть актуальный статус задач
+  try {
+    const snap = await db.collection('employees').doc(id).get();
+    if (snap.exists) {
+      const d = snap.data();
+      emp.tasks        = d.tasks        || [];
+      emp.achievements = d.achievements || [];
+    }
+  } catch(e) { /* fallback to cached */ }
+  renderAchPanelLists(emp);
+}
+
+function closeAchPanel(e) {
+  if (e && e.target !== document.getElementById('ach-backdrop')) return;
+  document.getElementById('ach-backdrop').style.display = 'none';
+  _achEmpId = null;
+}
+
+function renderAchPanelLists(emp) {
+  const tasks = emp.tasks || [];
+  const achs  = emp.achievements || [];
+
+  // Задания
+  const tasksEl = document.getElementById('ach-tasks-list');
+  if (!tasks.length) {
+    tasksEl.innerHTML = '<div style="font-size:0.75rem;color:rgba(255,255,255,0.3);padding:0.3rem 0;">Нет заданий</div>';
+  } else {
+    tasksEl.innerHTML = tasks.map((t, i) => {
+      const done    = !!t.doneAt;
+      const pending = !done && t.status === 'pending';
+      const icon    = done ? '✅' : pending ? '⏳' : '🎯';
+      let dlBadge = '';
+      if (t.deadline && !done) {
+        const dl    = new Date(t.deadline + 'T23:59:59');
+        const today = new Date(); today.setHours(0,0,0,0);
+        const days  = Math.ceil((dl - today) / 86400000);
+        const dlFmt = dl.toLocaleDateString('ru', { day:'numeric', month:'short' });
+        if (days < 0)       dlBadge = `<span style="font-size:0.65rem;color:#ff6b6b;margin-top:2px;display:block;">🔴 Дедлайн просрочен: ${dlFmt}</span>`;
+        else if (days <= 3) dlBadge = `<span style="font-size:0.65rem;color:#f5c842;margin-top:2px;display:block;">🟡 Дедлайн: ${dlFmt} (${days} дн.)</span>`;
+        else                dlBadge = `<span style="font-size:0.65rem;color:rgba(255,255,255,0.4);margin-top:2px;display:block;">📅 Дедлайн: ${dlFmt}</span>`;
+      }
+      return `
+      <div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:1rem;margin-top:2px;">${icon}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.8rem;color:#fff;font-weight:600;">${t.title}</div>
+          ${t.desc ? `<div style="font-size:0.7rem;color:rgba(255,255,255,0.4);">${t.desc}</div>` : ''}
+          ${dlBadge}
+          ${done    ? `<div style="font-size:0.65rem;color:#7de8b0;margin-top:2px;">✓ Выполнено ${t.doneAt}</div>` : ''}
+          ${pending ? `<div style="font-size:0.65rem;color:#f5c842;margin-top:2px;">⏳ Ждёт подтверждения</div>
+            <div style="display:flex;gap:0.4rem;margin-top:0.4rem;">
+              <button onclick="confirmTask(${i})" style="background:#27ae60;border:none;border-radius:6px;color:#fff;font-size:0.7rem;font-weight:700;padding:0.3rem 0.6rem;cursor:pointer;">✅ Подтвердить</button>
+              <button onclick="rejectTask(${i})"  style="background:#c0392b;border:none;border-radius:6px;color:#fff;font-size:0.7rem;font-weight:700;padding:0.3rem 0.6rem;cursor:pointer;">❌ Вернуть</button>
+            </div>` : ''}
+        </div>
+        <button onclick="removeTask(${i})" style="background:none;border:none;color:rgba(255,80,80,0.6);font-size:1rem;cursor:pointer;padding:0 4px;margin-top:1px;">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  // Ачивки
+  const achsEl = document.getElementById('ach-list');
+  if (!achs.length) {
+    achsEl.innerHTML = '<div style="font-size:0.75rem;color:rgba(255,255,255,0.3);padding:0.3rem 0;">Нет ачивок</div>';
+  } else {
+    achsEl.innerHTML = achs.map((a, i) => {
+      let dlBadge = '';
+      if (a.deadline) {
+        const dl    = new Date(a.deadline + 'T23:59:59');
+        const today = new Date(); today.setHours(0,0,0,0);
+        const days  = Math.ceil((dl - today) / 86400000);
+        const dlFmt = dl.toLocaleDateString('ru', { day:'numeric', month:'short' });
+        if (days < 0)       dlBadge = `<div style="font-size:0.65rem;color:#ff6b6b;">🔴 Истёк: ${dlFmt}</div>`;
+        else if (days <= 3) dlBadge = `<div style="font-size:0.65rem;color:#f5c842;">🟡 До ${dlFmt} (${days} дн.)</div>`;
+        else                dlBadge = `<div style="font-size:0.65rem;color:rgba(255,255,255,0.4);">📅 До ${dlFmt}</div>`;
+      }
+      return `
+      <div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.45rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:1.2rem;margin-top:2px;">${a.emoji || '🏅'}</span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.8rem;color:#fff;font-weight:600;">${a.title}</div>
+          ${dlBadge}
+        </div>
+        <button onclick="removeAch(${i})" style="background:none;border:none;color:rgba(255,80,80,0.6);font-size:1rem;cursor:pointer;padding:0 4px;">✕</button>
+      </div>`;
+    }).join('');
+  }
+}
+
+async function addTask() {
+  const title    = document.getElementById('ach-task-title').value.trim();
+  const desc     = document.getElementById('ach-task-desc').value.trim();
+  const deadline = document.getElementById('ach-task-deadline').value || '';
+  if (!title) { toast('Введи название задания'); return; }
+  const emp = employees.find(e => e.id === _achEmpId);
+  if (!emp) return;
+  const entry = { title, desc, givenAt: new Date().toISOString() };
+  if (deadline) entry.deadline = deadline;
+  const tasks = [...(emp.tasks || []), entry];
+  try {
+    await db.collection('employees').doc(_achEmpId).update({ tasks });
+    emp.tasks = tasks;
+    document.getElementById('ach-task-title').value = '';
+    document.getElementById('ach-task-desc').value = '';
+    document.getElementById('ach-task-deadline').value = '';
+    renderAchPanelLists(emp);
+    toast('✓ Задание добавлено');
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function removeTask(idx) {
+  const emp = employees.find(e => e.id === _achEmpId);
+  if (!emp) return;
+  const tasks = (emp.tasks || []).filter((_, i) => i !== idx);
+  try {
+    await db.collection('employees').doc(_achEmpId).update({ tasks });
+    emp.tasks = tasks;
+    renderAchPanelLists(emp);
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function confirmTask(idx) {
+  const emp = employees.find(e => e.id === _achEmpId);
+  if (!emp) return;
+  const tasks = [...(emp.tasks || [])];
+  if (!tasks[idx]) return;
+  const now = new Date();
+  const MONTHS = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  const dateStr = `${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+  const { status, ...rest } = tasks[idx];
+  tasks[idx] = { ...rest, doneAt: dateStr };
+  try {
+    await db.collection('employees').doc(_achEmpId).update({ tasks });
+    emp.tasks = tasks;
+    renderAchPanelLists(emp);
+    toast('✅ Задание подтверждено');
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function rejectTask(idx) {
+  const emp = employees.find(e => e.id === _achEmpId);
+  if (!emp) return;
+  const tasks = [...(emp.tasks || [])];
+  if (!tasks[idx]) return;
+  const { status, doneAt, ...rest } = tasks[idx];
+  tasks[idx] = { ...rest };
+  try {
+    await db.collection('employees').doc(_achEmpId).update({ tasks });
+    emp.tasks = tasks;
+    renderAchPanelLists(emp);
+    toast('❌ Задание возвращено сотруднику');
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function addAch() {
+  const emoji    = document.getElementById('ach-emoji').value.trim() || '🏅';
+  const title    = document.getElementById('ach-title').value.trim();
+  const deadline = document.getElementById('ach-deadline').value || '';
+  if (!title) { toast('Введи название ачивки'); return; }
+  const emp = employees.find(e => e.id === _achEmpId);
+  if (!emp) return;
+  const entry = { emoji, title, givenAt: new Date().toISOString() };
+  if (deadline) entry.deadline = deadline;
+  const achievements = [...(emp.achievements || []), entry];
+  try {
+    await db.collection('employees').doc(_achEmpId).update({ achievements });
+    emp.achievements = achievements;
+    document.getElementById('ach-emoji').value = '';
+    document.getElementById('ach-title').value = '';
+    document.getElementById('ach-deadline').value = '';
+    renderAchPanelLists(emp);
+    toast('✓ Ачивка выдана');
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function removeAch(idx) {
+  const emp = employees.find(e => e.id === _achEmpId);
+  if (!emp) return;
+  const achievements = (emp.achievements || []).filter((_, i) => i !== idx);
+  try {
+    await db.collection('employees').doc(_achEmpId).update({ achievements });
+    emp.achievements = achievements;
+    renderAchPanelLists(emp);
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+// ── СОБЫТИЯ ──
+let _adminEvents = [];
+
+async function loadAdminEvents() {
+  try {
+    const snap = await db.collection('events').orderBy('sortKey').get();
+    _adminEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch(e) {
+    // Если нет индекса — без сортировки
+    const snap = await db.collection('events').get();
+    _adminEvents = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  }
+  renderAdminEvents();
+}
+
+function renderAdminEvents() {
+  const el = document.getElementById('events-admin-list');
+  if (!el) return;
+  if (!_adminEvents.length) {
+    el.innerHTML = '<div style="font-size:0.8rem;color:var(--t-soft);padding:0.5rem 0;">Событий пока нет. Добавь вручную или перешли сообщение боту.</div>';
+    return;
+  }
+  const TYPE_COLOR = { sport:'#F54029', training:'#8ab4f8', fun:'#fbbf24', corp:'#f5c842' };
+  el.innerHTML = _adminEvents.map(ev => {
+    const col = TYPE_COLOR[ev.type] || '#ccc';
+    const orgs = (ev.organizers||[]).map(o => `@${o.handle}`).join(', ');
+    return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;margin-bottom:0.5rem;">
+      <div style="min-width:36px;text-align:center;">
+        <div style="font-size:1rem;font-weight:800;color:${col};">${ev.day||''}</div>
+        <div style="font-size:0.65rem;color:var(--t-soft);">${ev.mon||''}</div>
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.85rem;font-weight:700;color:var(--t-main);">${ev.title||'Без названия'}</div>
+        <div style="font-size:0.7rem;color:var(--t-soft);">${ev.date||''} ${ev.past?'· прошедшее':''}</div>
+        ${orgs ? `<div style="font-size:0.7rem;color:var(--t-soft);">${orgs}</div>` : ''}
+        ${ev.sheetUrl ? `<div style="font-size:0.7rem;color:#27ae60;">📊 Google Таблица</div>` : ''}
+      </div>
+      <div style="display:flex;gap:0.4rem;flex-shrink:0;">
+        <button onclick="toggleEventPast('${ev.id}',${!ev.past})" title="${ev.past?'Вернуть в Скоро':'Пометить как прошедшее'}"
+          style="background:none;border:1px solid var(--border);border-radius:6px;padding:0.25rem 0.45rem;font-size:0.75rem;cursor:pointer;color:var(--t-soft);">${ev.past?'↩ Скоро':'✓ Прошло'}</button>
+        <button onclick="deleteEvent('${ev.id}')"
+          style="background:none;border:none;color:rgba(200,50,50,0.6);font-size:1rem;cursor:pointer;padding:0 4px;">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addEvent() {
+  const title  = document.getElementById('ev-title').value.trim();
+  const date   = document.getElementById('ev-date-text').value.trim();
+  const day    = document.getElementById('ev-day').value.trim();
+  const mon    = document.getElementById('ev-mon').value.trim();
+  const type   = document.getElementById('ev-type').value;
+  const label  = document.getElementById('ev-label').value.trim() || (type === 'sport' ? '⚽️ Активность' : type === 'training' ? '📚 Тренинг' : type === 'corp' ? '🎉 Корпоратив' : '🍿 Досуг');
+  const desc   = document.getElementById('ev-desc').value.trim();
+  const orgName   = document.getElementById('ev-organizer-name').value.trim();
+  const orgHandle = document.getElementById('ev-organizer-handle').value.trim().replace(/^@/, '');
+  const sheetUrl  = document.getElementById('ev-sheet-url').value.trim();
+  const sortKey   = document.getElementById('ev-sort-key').value.trim() || new Date().toISOString().slice(0,10);
+  if (!title) { toast('Введи название'); return; }
+  const data = {
+    title, date, day, mon, type, label, desc,
+    organizers: orgName ? [{ name: orgName, handle: orgHandle }] : [],
+    sortKey, past: false,
+    createdAt: new Date().toISOString()
+  };
+  if (sheetUrl) data.sheetUrl = sheetUrl;
+  try {
+    await db.collection('events').add(data);
+    ['ev-title','ev-date-text','ev-day','ev-mon','ev-label','ev-desc','ev-organizer-name','ev-organizer-handle','ev-sheet-url','ev-sort-key'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    toast('✓ Событие добавлено');
+    loadAdminEvents();
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function toggleEventPast(id, past) {
+  try {
+    await db.collection('events').doc(id).update({ past });
+    const ev = _adminEvents.find(e => e.id === id);
+    if (ev) ev.past = past;
+    renderAdminEvents();
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+async function deleteEvent(id) {
+  if (!confirm('Удалить событие?')) return;
+  try {
+    await db.collection('events').doc(id).delete();
+    _adminEvents = _adminEvents.filter(e => e.id !== id);
+    renderAdminEvents();
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+
+function startRenameEmp(id) {
+  const emp = employees.find(e => e.id === id);
+  if (!emp) return;
+  const cell = document.getElementById('elr-name-' + id);
+  if (!cell || cell.querySelector('input')) return; // already editing
+  const oldName = emp.name;
+  cell.innerHTML = '';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = oldName;
+  inp.style.cssText = 'width:100%;font-size:0.78rem;padding:2px 4px;border:1px solid var(--wine);border-radius:4px;background:#fff;color:#333;outline:none;';
+  inp.onclick = e => e.stopPropagation();
+  cell.appendChild(inp);
+  inp.focus();
+  inp.select();
+
+  let _saved = false;
+  async function saveRename() {
+    if (_saved) return;
+    _saved = true;
+    const newName = inp.value.trim();
+    cell.textContent = newName || oldName;
+    if (!newName || newName === oldName) {
+      cell.textContent = oldName;
+      return;
+    }
+    try {
+      await db.collection('employees').doc(id).update({ name: newName });
+      emp.name = newName;
+      cell.textContent = newName;
+      toast('✓ Имя обновлено');
+    } catch(e) {
+      cell.textContent = oldName;
+      toast('Ошибка: ' + (e.message || e));
+    }
+  }
+
+  inp.addEventListener('blur', saveRename);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); saveRename(); }
+    if (e.key === 'Escape') { _saved = true; cell.textContent = oldName; }
+  });
+}
+
+async function changePin(id) {
+  const p = prompt('Новый PIN (минимум 2 цифры):');
+  if (!p) return;
+  if (!/^\d{2,}$/.test(p)) { toast('PIN — только цифры, минимум 2'); return; }
+  if (employees.some(e => e.id!==id && e.pin===p)) { toast('PIN уже занят'); return; }
+  try {
+    await db.collection('employees').doc(id).update({ pin: p });
+    employees.find(e=>e.id===id).pin = p;
+    renderAdmin();
+    toast('PIN изменён');
+  } catch(e) { toast('Ошибка'); }
+}
+async function editVac(id) {
+  const emp = employees.find(e=>e.id===id);
+  if (!emp) return;
+  const cur = (emp.vacationDays||[]).join(', ');
+  const inp = prompt(`Дни отпуска для ${emp.name}\nДиапазон: "17-30", числа: "3, 5, 7" или пусто — без отпуска:`, cur);
+  if (inp === null) return;
+  let days = [];
+  if (inp.trim()) {
+    const parts = inp.split(',').map(s => s.trim()).filter(Boolean);
+    for (const part of parts) {
+      const m = part.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+      if (m) {
+        const from = parseInt(m[1]), to = parseInt(m[2]);
+        if (!isNaN(from) && !isNaN(to) && from <= to && from >= 1 && to <= 31) {
+          for (let d = from; d <= to; d++) days.push(d);
+        }
+      } else {
+        const n = parseInt(part);
+        if (!isNaN(n) && n >= 1 && n <= 31) days.push(n);
+      }
+    }
+    days = [...new Set(days)].sort((a,b)=>a-b);
+  }
+  try {
+    await db.collection('employees').doc(id).update({ vacationDays: days });
+    emp.vacationDays = days;
+    renderAdmin();
+    renderSchedGrid();
+    toast(days.length ? `Отпуск: ${days.join(', ')}` : 'Отпуск снят');
+  } catch(e) { toast('Ошибка'); }
+}
+/* ──────────────────────────────────────
+   VACATIONS TAB
+   ────────────────────────────────────── */
+function groupToRanges(days) {
+  if (!days.length) return [];
+  const sorted = [...days].sort((a,b) => a-b);
+  const ranges = [[sorted[0]]];
+  for (let i = 1; i < sorted.length; i++) {
+    const last = ranges[ranges.length-1];
+    if (sorted[i] === last[last.length-1] + 1) last.push(sorted[i]);
+    else ranges.push([sorted[i]]);
+  }
+  return ranges;
+}
+function vacRangeStr(vd) {
+  return groupToRanges(vd).map(r =>
+    r.length === 1 ? String(r[0]) : `${r[0]}-${r[r.length-1]}`
+  ).join(', ');
+}
+function parseVacInput(inp) {
+  let days = [];
+  const parts = (inp||'').split(',').map(s => s.trim()).filter(Boolean);
+  for (const part of parts) {
+    const m = part.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+    if (m) {
+      const from = parseInt(m[1]), to = parseInt(m[2]);
+      if (!isNaN(from) && !isNaN(to) && from <= to && from >= 1 && to <= 31)
+        for (let d = from; d <= to; d++) days.push(d);
+    } else {
+      const n = parseInt(part);
+      if (!isNaN(n) && n >= 1 && n <= 31) days.push(n);
+    }
+  }
+  return [...new Set(days)].sort((a,b) => a-b);
+}
+function renderVacations() {
+  const { periodStart:s, periodEnd:e, month, year } = appCfg;
+  const mn = monthNum(month);
+  const body = document.getElementById('vac-body');
+  const groups = [
+    { label:'— ПРО',       filter: emp => emp.sub === 'ПРО' },
+    { label:'— Официанты', filter: emp => emp.sub === 'Офики' },
+    { label:'— Ранеры',    filter: emp => emp.sub === 'Ранеры' || (emp.dept === 'Ранеры' && !emp.sub) },
+  ];
+  const totalVac = employees.filter(emp =>
+    (emp.vacationDays||[]).some(d => d >= s && d <= e)
+  ).length;
+  let html = `
+    <div class="vac-summary">
+      <div class="vac-summary-text">
+        В отпуске в период <b>${s}–${e} ${month}</b>: <b>${totalVac}</b> чел.&nbsp;
+        <span style="font-size:0.7rem;color:var(--t-ghost)">Введите диапазон (17-30) или числа через запятую, затем ✓</span>
+      </div>
+      <button class="btn-xs red" onclick="clearAllVacations()">Сбросить всё</button>
+    </div>`;
+  groups.forEach(({ label, filter }) => {
+    const grpEmps = employees.filter(filter);
+    if (!grpEmps.length) return;
+    html += `<div class="vac-section"><div class="vac-section-title">${label}</div>`;
+    grpEmps.forEach(emp => {
+      const allVac = (emp.vacationDays || []).sort((a,b)=>a-b);
+      // Only show days within current period for chips
+      const periodVac = allVac.filter(d => d >= s && d <= e);
+      const chips = periodVac.length
+        ? groupToRanges(periodVac).map(r => {
+            const from = r[0], to = r[r.length-1];
+            const dw1 = WNDS[new Date(year, mn-1, from).getDay()];
+            const dw2 = WNDS[new Date(year, mn-1, to).getDay()];
+            const lbl = r.length === 1 ? `${from} ${dw1}` : `${from} ${dw1}–${to} ${dw2}`;
+            return `<span class="vac-chip">${lbl}</span>`;
+          }).join('')
+        : '<span class="vac-none">нет</span>';
+      const curVal = vacRangeStr(periodVac);
+      html += `<div class="vac-row">
+        <div class="vac-name">${emp.name}</div>
+        <div class="vac-days">${chips}</div>
+        <div class="vac-edit-row">
+          <input class="vac-input" id="vi-${emp.id}" value="${curVal}" placeholder="напр. 17-30"
+            onkeydown="if(event.key==='Enter') saveVacInline('${emp.id}')">
+          <button class="vac-save" onclick="saveVacInline('${emp.id}')" title="Сохранить">✓</button>
+          ${periodVac.length ? `<button class="vac-clr" onclick="clearVacInline('${emp.id}')" title="Убрать отпуск">✕</button>` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  body.innerHTML = html;
+}
+async function saveVacInline(id) {
+  const emp = employees.find(e => e.id === id);
+  if (!emp) return;
+  const inp = document.getElementById('vi-' + id)?.value || '';
+  const days = parseVacInput(inp);
+  try {
+    await db.collection('employees').doc(id).update({ vacationDays: days });
+    emp.vacationDays = days;
+    renderVacations();
+    renderSchedGrid();
+    const nm = emp.name.split(' ')[0];
+    toast(days.length ? `${nm}: отпуск ${days.join(', ')}` : `${nm}: отпуск снят`);
+  } catch(e) { toast('Ошибка'); }
+}
+async function clearVacInline(id) {
+  const emp = employees.find(e => e.id === id);
+  if (!emp) return;
+  try {
+    await db.collection('employees').doc(id).update({ vacationDays: [] });
+    emp.vacationDays = [];
+    renderVacations();
+    renderSchedGrid();
+    toast(`${emp.name.split(' ')[0]}: отпуск снят`);
+  } catch(e) { toast('Ошибка'); }
+}
+async function clearAllVacations() {
+  if (!confirm('Сбросить отпуска у всех сотрудников?')) return;
+  try {
+    const batch = db.batch();
+    employees.forEach(emp => {
+      batch.update(db.collection('employees').doc(emp.id), { vacationDays: [] });
+      emp.vacationDays = [];
+    });
+    await batch.commit();
+    renderVacations();
+    renderSchedGrid();
+    toast('Все отпуска сброшены');
+  } catch(e) { toast('Ошибка'); }
+}
+async function clearWishes() {
+  if (!confirm(`Удалить все пожелания за период "${periodKey}"?\nЭто не удалит расписание.`)) return;
+  try {
+    const snap = await db.collection('wishes').where('period','==',periodKey).get();
+    if (snap.empty) { toast('Пожелания уже пусты'); return; }
+    const batch = db.batch();
+    snap.docs.forEach(doc => batch.delete(doc.ref));
+    await batch.commit();
+    wishesArr = [];
+    renderWishes();
+    renderStatus();
+    renderSchedGrid();
+    toast(`Удалено ${snap.size} пожеланий`);
+  } catch(e) { console.error(e); toast('Ошибка удаления'); }
+}
+async function clearExceptions() {
+  if (!confirm('Сбросить все индивидуальные исключения у всех сотрудников?\n(макс. выходных → 3, заметки → пусто)')) return;
+  try {
+    const batch = db.batch();
+    employees.forEach(emp => {
+      batch.update(db.collection('employees').doc(emp.id), { managerNote: '', maxConsecutive: 3 });
+      emp.managerNote = '';
+      emp.maxConsecutive = 3;
+    });
+    await batch.commit();
+    renderExceptions();
+    renderAdmin();
+    renderSchedGrid();
+    toast('Все исключения сброшены');
+  } catch(e) { console.error(e); toast('Ошибка'); }
+}
+async function changeSub(id, newSub) {
+  const emp = employees.find(e=>e.id===id);
+  if (!emp || emp.sub === newSub) return;
+  const newDept = newSub === 'Ранеры' ? 'Ранеры' : 'Официанты';
+  try {
+    await db.collection('employees').doc(id).update({ sub: newSub, dept: newDept });
+    emp.sub  = newSub;
+    emp.dept = newDept;
+    renderSchedGrid();
+    toast(`${emp.name.split(' ')[0]} → ${newSub}`);
+  } catch(e) { toast('Ошибка смены подразделения'); }
+}
+async function editNote(id) {
+  const emp = employees.find(e=>e.id===id);
+  if (!emp) return;
+  const curNote   = emp.managerNote || '';
+  const curConsec = emp.maxConsecutive ?? 3;
+  const note = prompt(
+    `Заметка / исключение для ${emp.name}:\n(оставьте пустым — без заметки)`,
+    curNote
+  );
+  if (note === null) return;
+  const consecStr = prompt(
+    `Макс. выходных ПОДРЯД для ${emp.name}:\n(по умолчанию 3; увеличьте для особых случаев)`,
+    String(curConsec)
+  );
+  if (consecStr === null) return;
+  const maxConsecutive = Math.max(1, parseInt(consecStr) || 3);
+  try {
+    await db.collection('employees').doc(id).update({
+      managerNote: note.trim(),
+      maxConsecutive
+    });
+    emp.managerNote    = note.trim();
+    emp.maxConsecutive = maxConsecutive;
+    renderAdmin();
+    renderExceptions();
+    toast('Исключения сохранены');
+  } catch(e) { toast('Ошибка'); }
+}
+async function clearSched() {
+  if (!confirm('Очистить всё расписание за этот период?')) return;
+  try {
+    await db.collection('schedules').doc(periodKey).set({ cells: {} });
+    schedData = {};
+    renderSchedGrid();
+    toast('Расписание очищено');
+  } catch(e) { toast('Ошибка'); }
+}
+/* ──────────────────────────────────────
+   EMPLOYEE ORDER
+   ────────────────────────────────────── */
+function empGroup(emp) {
+  const s = emp.sub || emp.dept;
+  if (s === 'ПРО') return 'ПРО';
+  if (s === 'Офики') return 'Офики';
+  return 'Ранеры';
+}
+async function moveEmp(id, dir) {
+  const emp = employees.find(e => e.id === id);
+  if (!emp) return;
+  // Work within same group only
+  const grp = employees.filter(e => empGroup(e) === empGroup(emp));
+  const grpIdx = grp.findIndex(e => e.id === id);
+  const swapGrpIdx = grpIdx + dir;
+  if (swapGrpIdx < 0 || swapGrpIdx >= grp.length) return;
+  const a = grp[grpIdx];
+  const b = grp[swapGrpIdx];
+  // Swap order values
+  const tmpOrder = a.order ?? 0;
+  a.order = b.order ?? 0;
+  b.order = tmpOrder;
+  // Re-sort global array
+  employees.sort((x, y) => (x.order ?? 0) - (y.order ?? 0));
+  // Save to Firestore
+  try {
+    const batch = db.batch();
+    batch.update(db.collection('employees').doc(a.id), { order: a.order });
+    batch.update(db.collection('employees').doc(b.id), { order: b.order });
+    await batch.commit();
+  } catch(e) { console.error('moveEmp:', e); toast('Ошибка сохранения порядка'); }
+  renderAdmin();
+  renderSchedGrid();
+  renderStatus();
+}
+/* ──────────────────────────────────────
+   REALTIME LISTENERS
+   ────────────────────────────────────── */
+function resetSchedListener() {
+  if (unsubSched) { unsubSched(); unsubSched = null; }
+  unsubSched = db.collection('schedules').doc(periodKey).onSnapshot(snap => {
+    schedData = snap.exists ? (snap.data().cells || {}) : {};
+    if (document.getElementById('screen-manager').classList.contains('active') && isMgr) renderSchedGrid();
+    if (document.getElementById('screen-emp-view').classList.contains('active') && curUser) renderEmpScheduleStrip();
+  }, e => console.error('sched listener:', e));
+}
+function resetWishesListener() {
+  if (unsubWishes) { unsubWishes(); unsubWishes = null; }
+  unsubWishes = db.collection('wishes').where('period','==',periodKey).onSnapshot(snap => {
+    wishesArr = snap.docs.map(d => d.data());
+    if (document.getElementById('screen-manager').classList.contains('active') && isMgr) {
+      renderWishes(); renderStatus(); renderSchedGrid();
+    }
+  }, e => console.error('wishes listener:', e));
+}
+/* ──────────────────────────────────────
+   DEADLINE
+   ────────────────────────────────────── */
+function isDeadlinePassed() {
+  if (!appCfg.wishDeadline) return false;
+  return Date.now() > new Date(appCfg.wishDeadline).getTime();
+}
+/* ──────────────────────────────────────
+   EMPLOYEE VIEW SCREEN
+   ────────────────────────────────────── */
+async function openEmpView() {
+  const { periodStart:s, periodEnd:e, month, year } = appCfg;
+  document.getElementById('ev-period').textContent = `${s}–${e} ${month} ${year}`;
+  document.getElementById('ev-name-hdr').textContent = curUser.name.split(' ')[0];
+  showScr('screen-emp-view');
+  renderEmpScheduleStrip();
+  // Check if employee already submitted wishes
+  let myWish = null;
+  try {
+    const wDoc = await db.collection('wishes').doc(`${periodKey}_${curUser.id}`).get();
+    if (wDoc.exists) myWish = wDoc.data();
+  } catch(err) { console.error('wish check:', err); }
+  const wishStatusEl = document.getElementById('ev-wish-status');
+  if (myWish) {
+    const t = new Date(myWish.submittedAt).toLocaleString('ru', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+    wishStatusEl.innerHTML = `<span style="color:#1a8a1a">✓ Отправлено ${t}</span>`;
+  } else {
+    wishStatusEl.textContent = 'Пожелания ещё не заполнены';
+  }
+  const deadlineEl = document.getElementById('ev-deadline-info');
+  const wishBtn    = document.getElementById('ev-wish-btn');
+  const passed     = isDeadlinePassed();
+  if (appCfg.wishDeadline) {
+    const dt = new Date(appCfg.wishDeadline).toLocaleString('ru', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+    if (passed) {
+      deadlineEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center"><div class="deadline-badge dl-closed">🔒 Приём пожеланий закрыт — ${dt}</div><div class="deadline-badge" style="background:rgba(0,0,0,0.06);border:1px solid rgba(0,0,0,0.12);color:var(--t-mid)">👤 ${curUser.name}</div></div>`;
+      wishBtn.textContent = 'Приём закрыт';
+      wishBtn.disabled = true;
+      wishBtn.style.cssText = 'opacity:0.45;cursor:not-allowed;pointer-events:none';
+    } else {
+      deadlineEl.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center"><div class="deadline-badge dl-open">⏰ Принимаем пожелания до ${dt}</div><div class="deadline-badge" style="background:rgba(0,0,0,0.06);border:1px solid rgba(0,0,0,0.12);color:var(--t-mid)">👤 ${curUser.name}</div></div>`;
+      wishBtn.textContent = myWish ? 'Изменить пожелания →' : 'Заполнить пожелания →';
+      wishBtn.disabled = false;
+      wishBtn.style.cssText = '';
+    }
+  } else {
+    deadlineEl.innerHTML = `<div class="deadline-badge" style="background:rgba(0,0,0,0.06);border:1px solid rgba(0,0,0,0.12);color:var(--t-mid)">👤 ${curUser.name}</div>`;
+    wishBtn.textContent = myWish ? 'Изменить пожелания →' : 'Заполнить пожелания →';
+    wishBtn.disabled = false;
+    wishBtn.style.cssText = '';
+  }
+}
+function renderEmpScheduleStrip() {
+  if (!curUser) return;
+  const strip = document.getElementById('ev-sched-strip');
+  const desc  = document.getElementById('ev-sched-desc');
+  if (!strip) return;
+  const { periodStart:s, periodEnd:e, month, year } = appCfg;
+  const mn  = monthNum(month);
+  const es  = schedData[curUser.id] || { days:{}, zones:{} };
+  const vac = new Set(curUser.vacationDays || []);
+  const assignedCount = Object.values(es.days || {}).filter(Boolean).length;
+  if (!assignedCount && !vac.size) {
+    strip.innerHTML = '<div class="ev-no-sched">Расписание ещё не составлено</div>';
+    if (desc) desc.textContent = 'Менеджер ещё не составил расписание';
+    return;
+  }
+  if (desc) desc.textContent = `${s}–${e} ${month} ${year}`;
+  let html = '';
+  for (let d = s; d <= e; d++) {
+    const dt    = new Date(year, mn-1, d);
+    const dw    = WNDS[dt.getDay()];
+    const shift = es.days?.[d]  || '';
+    const zone  = es.zones?.[d] || '';
+
+    if (vac.has(d)) {
+      html += `<div class="ev-day ev-vac">` +
+        `<div class="ev-day-dow">${dw}</div>` +
+        `<div class="ev-day-num">${d}</div>` +
+        `<div class="ev-day-sh">отпуск</div>` +
+        `</div>`;
+      continue;
+    }
+
+    if (!shift) {
+      // Day off — red
+      html += `<div class="ev-day ev-off">` +
+        `<div class="ev-day-dow">${dw}</div>` +
+        `<div class="ev-day-num">${d}</div>` +
+        `<div class="ev-day-sh">выходной</div>` +
+        `</div>`;
+    } else {
+      // Shift — colored by zone
+      const zoneCls = zone === 'мангал' ? 'ev-mangal'
+                    : zone === 'печка'  ? 'ev-pechka'
+                    : zone === 'лифт'   ? 'ev-lift'
+                    : zone === 'бар'    ? 'ev-bar'
+                    : 'ev-shift';
+      html += `<div class="ev-day ${zoneCls}">` +
+        `<div class="ev-day-dow">${dw}</div>` +
+        `<div class="ev-day-num">${d}</div>` +
+        `<div class="ev-day-sh">${shift}</div>` +
+        `</div>`;
+    }
+  }
+  strip.innerHTML = html;
+}
+function goAfterSuccess() {
+  if (curUser) openEmpView();
+  else goLogin();
+}
+/* ──────────────────────────────────────
+   HISTORY TAB
+   ────────────────────────────────────── */
+async function renderHistory() {
+  const body = document.getElementById('hist-body');
+  body.innerHTML = '<div class="hist-empty">Загрузка...</div>';
+  try {
+    const snap = await db.collection('schedules').get();
+    if (snap.empty) {
+      body.innerHTML = '<div class="hist-empty">Нет сохранённых периодов</div>';
+      return;
+    }
+    const periods = snap.docs.map(doc => ({ key: doc.id, ...parsePeriodKey(doc.id), empCount: Object.keys(doc.data().cells || {}).length }));
+    periods.sort((a,b) => {
+      if (a.year !== b.year) return b.year - a.year;
+      if (a.monthN !== b.monthN) return b.monthN - a.monthN;
+      return b.start - a.start;
+    });
+    let html = '<div class="hist-period-list">';
+    periods.forEach(p => {
+      const isCur = p.key === periodKey;
+      html += `<div class="hist-period-card${isCur?' hist-cur':''}" onclick="viewHistPeriod('${p.key}')">` +
+        `<div class="hist-pk">` +
+        `<div class="hist-pk-name">${p.start}–${p.end} ${p.month} ${p.year}</div>` +
+        `<div class="hist-pk-key">${p.key}</div>` +
+        `</div>` +
+        `<div class="hist-badge">${p.empCount} сотрудников</div>` +
+        (isCur ? '<div class="hist-cur-tag">текущий</div>' : '') +
+        `</div>`;
+    });
+    html += '</div>';
+    body.innerHTML = html;
+  } catch(e) {
+    console.error('renderHistory:', e);
+    body.innerHTML = '<div class="hist-empty">Ошибка загрузки</div>';
+  }
+}
+function parsePeriodKey(key) {
+  // Format: "2026_август_1-15"
+  const parts = key.split('_');
+  const year  = parseInt(parts[0]) || 0;
+  const month = parts[1] || '';
+  const range = (parts[2] || '').split('-');
+  const start = parseInt(range[0]) || 1;
+  const end   = parseInt(range[1]) || 15;
+  const monthN = monthNum(month);
+  return { year, month, monthN, start, end };
+}
+async function viewHistPeriod(key) {
+  const body = document.getElementById('hist-body');
+  const p = parsePeriodKey(key);
+  body.innerHTML = '<div class="hist-wrap">' +
+    `<button class="hist-back" onclick="renderHistory()">← Все периоды</button>` +
+    `<div class="hist-view-period">${p.start}–${p.end} ${p.month} ${p.year}</div>` +
+    `<div class="hist-view-key">${key}</div>` +
+    `<div id="hist-grid-container"><div class="hist-empty">Загрузка...</div></div>` +
+    '</div>';
+  try {
+    const doc = await db.collection('schedules').doc(key).get();
+    const data = doc.exists ? (doc.data().cells || {}) : {};
+    renderHistGrid('hist-grid-container', p, data);
+  } catch(e) {
+    document.getElementById('hist-grid-container').innerHTML = '<div class="hist-empty">Ошибка загрузки</div>';
+  }
+}
+function renderHistGrid(containerId, p, data) {
+  const container = document.getElementById(containerId);
+  const mn = p.monthN;
+  const days = [];
+  for (let d = p.start; d <= p.end; d++) {
+    const dt = new Date(p.year, mn-1, d);
+    days.push({ d, name: WNDS[dt.getDay()], wknd: ['пт','сб','вс'].includes(WNDS[dt.getDay()]) });
+  }
+  let h = '<div class="hist-grid-outer"><table class="sched-tbl"><thead><tr>';
+  h += '<th class="th-name">Сотрудник</th>';
+  days.forEach(({d,name,wknd}) => {
+    h += `<th style="${wknd?'color:rgba(160,80,0,0.8)':''}">${d}<br><span style="font-size:0.58em;font-weight:400;">${name}</span></th>`;
+  });
+  h += '</tr></thead><tbody>';
+  const groups = [
+    { label:'— ПРО',       filter: e => e.sub==='ПРО' },
+    { label:'— Официанты', filter: e => e.sub==='Офики' },
+    { label:'— Ранеры',    filter: e => e.sub==='Ранеры' || (e.dept==='Ранеры' && !e.sub) },
+  ];
+  groups.forEach(({label, filter}) => {
+    const grpEmps = employees.filter(filter);
+    if (!grpEmps.length) return;
+    h += `<tr class="grp-row"><td colspan="${days.length+1}">${label}</td></tr>`;
+    grpEmps.forEach(emp => {
+      const es = data[emp.id] || { days:{}, zones:{} };
+      h += '<tr>';
+      h += `<td class="td-name">${emp.name}</td>`;
+      days.forEach(({d,wknd}) => {
+        const shift = es.days?.[d] || '';
+        const zone  = es.zones?.[d] || '';
+        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
+        const zClr  = zone ? ZONE_CLR[zone] : '';
+        h += `<td class="cell ${shCls}${wknd?' col-wknd':''}" style="cursor:default">`;
+        if (shift) {
+          h += `<span class="cell-s">${shift}</span>`;
+          if (zone) h += `<span class="cell-z" style="color:${zClr}">${zone}</span>`;
+        }
+        h += '</td>';
+      });
+      h += '</tr>';
+    });
+  });
+  h += '</tbody></table></div>';
+  container.innerHTML = h;
+}
+/* ──────────────────────────────────────
+   KEYBOARD — LOGIN SCREEN
+   ────────────────────────────────────── */
+document.addEventListener('keydown', ev => {
+  if (!document.getElementById('screen-login').classList.contains('active')) return;
+  if (/^\d$/.test(ev.key)) np(ev.key);
+  else if (ev.key === 'Backspace') npDel();
+});
+/* ──────────────────────────────────────
+   PWA — SERVICE WORKER REGISTRATION
+   ────────────────────────────────────── */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/OneSignalSDKWorker.js', { scope: '/' })
+      .catch(e => console.warn('SW reg failed:', e));
+  });
+}
+/* ──────────────────────────────────────
+   ONESIGNAL — PUSH NOTIFICATIONS
+   ────────────────────────────────────── */
+// ⚠️  Замените эти значения после регистрации в OneSignal:
+const ONESIGNAL_APP_ID    = 'c831af81-4c2f-44b7-9063-4a8b22401828';
+const ONESIGNAL_REST_KEY  = '';
+
+window.OneSignalDeferred = window.OneSignalDeferred || [];
+
+function initOneSignal() {
+  if (!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID === 'YOUR_ONESIGNAL_APP_ID') return;
+  OneSignalDeferred.push(async function(OneSignal) {
+    await OneSignal.init({
+      appId: ONESIGNAL_APP_ID,
+      serviceWorkerPath: '/OneSignalSDKWorker.js',
+      notifyButton: { enable: false },
+    });
+  });
+}
+initOneSignal();
+
+async function subscribeEmployeePush(emp) {
+  if (!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID === 'YOUR_ONESIGNAL_APP_ID') return;
+  try {
+    OneSignalDeferred.push(async function(OneSignal) {
+      // Link this browser to the employee account
+      await OneSignal.login(String(emp.id));
+      OneSignal.User.addTag('employee_id', String(emp.id));
+      OneSignal.User.addTag('employee_name', emp.name.split(' ')[0]);
+      // Ask for push permission (browser native prompt)
+      const granted = await OneSignal.Notifications.requestPermission();
+      if (granted) toast('🔔 Уведомления о сменах включены');
+    });
+  } catch(e) { console.warn('push subscribe:', e); }
+}
+
+async function sendShiftReminders() {
+  if (!ONESIGNAL_APP_ID || ONESIGNAL_APP_ID === 'YOUR_ONESIGNAL_APP_ID') {
+    toast('⚠️ OneSignal не настроен — добавьте App ID в код');
+    return;
+  }
+  if (!ONESIGNAL_REST_KEY || ONESIGNAL_REST_KEY === 'YOUR_ONESIGNAL_REST_API_KEY') {
+    toast('⚠️ Добавьте REST API Key в код (OneSignal → Keys & IDs)');
+    return;
+  }
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tDay = tomorrow.getDate();
+  const tWd  = ['вс','пн','вт','ср','чт','пт','сб'][tomorrow.getDay()];
+  const { periodStart: ps, periodEnd: pe } = appCfg;
+  if (tDay < ps || tDay > pe) { toast('Завтра не входит в рабочий период'); return; }
+
+  const working = employees.filter(emp => {
+    const es = schedData[emp.id];
+    return es && es.days && es.days[tDay];
+  });
+  if (!working.length) { toast('Завтра нет назначенных смен'); return; }
+
+  let sent = 0, failed = 0;
+  for (const emp of working) {
+    const shift = schedData[emp.id].days[tDay];
+    const zone  = schedData[emp.id].zones?.[tDay] || '';
+    const shiftTxt = shift + (zone ? ` (${zone})` : '');
+    try {
+      const res = await fetch('https://onesignal.com/api/v1/notifications', {
+        method: 'POST',
+        headers: { 'Authorization': `Basic ${ONESIGNAL_REST_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          app_id: ONESIGNAL_APP_ID,
+          filters: [{ field: 'tag', key: 'employee_id', relation: '=', value: String(emp.id) }],
+          headings: { ru: `Завтра (${tWd}) на смену 👋` },
+          contents: { ru: `${emp.name.split(' ')[0]}, завтра твоя смена: ${shiftTxt}` },
+          ttl: 86400,
+        })
+      });
+      res.ok ? sent++ : failed++;
+    } catch(e) { failed++; }
+  }
+  toast(`📨 Отправлено: ${sent}${failed ? `, ошибок: ${failed}` : ''}`);
+}
+/* ──────────────────────────────────────
+   START
+   ────────────────────────────────────── */
+boot();
+
+// ═══════════════════════════════════════════
+// 📩 АНОНИМНАЯ ОБРАТНАЯ СВЯЗЬ
+// ═══════════════════════════════════════════
+
+const ANONFB_BOT_TOKEN = '8970707575:AAGGAaLyMJVrUbGA7wOcbSwn4wPL_WVmgG8';
+
+async function tgSend(chatId, text) {
+  try {
+    await fetch(`https://api.telegram.org/bot${ANONFB_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' })
+    });
+  } catch(e) { /* silent */ }
+}
+
+let anonfbUnsub = null;
+
+function loadFeedbackTab() {
+  const list = document.getElementById('anonfb-list');
+  if (!list) return;
+
+  if (anonfbUnsub) anonfbUnsub(); // отписываемся от прошлого listener
+
+  anonfbUnsub = db.collection('anonymousFeedback')
+    .orderBy('submittedAt', 'desc')
+    .onSnapshot(snap => {
+      if (snap.empty) {
+        list.innerHTML = '<div class="anonfb-empty">Сообщений пока нет</div>';
+        return;
+      }
+      list.innerHTML = snap.docs.map(doc => {
+        const d = doc.data();
+        const date = d.submittedAt ? new Date(d.submittedAt).toLocaleString('ru-RU', {day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'}) : '';
+        const prevReply = d.replied && d.replyText
+          ? `<div class="anonfb-prev-reply">💬 Ваш ответ: ${escHtml(d.replyText)}</div>`
+          : '';
+        const replyBlock = d.replied
+          ? `<div class="anonfb-replied-badge">✓ Ответ отправлен</div>${prevReply}`
+          : `${prevReply}
+             ${!d.telegramId ? `<div style="font-size:0.72rem;color:#b05a00;background:rgba(180,100,0,0.08);border-radius:6px;padding:0.35rem 0.6rem;margin-bottom:0.5rem;">⚠️ Сотрудник открыл приложение не через Telegram — ответ не доставить</div>` : ''}
+             <textarea class="anonfb-reply-area" id="anonfb-ta-${doc.id}" placeholder="Написать ответ…" rows="3" ${!d.telegramId?'disabled style="opacity:0.4"':''}></textarea>
+             <button class="anonfb-reply-btn" onclick="sendAnonReply('${doc.id}', ${d.telegramId || 'null'}, this)" ${!d.telegramId?'disabled':''}>Отправить ответ</button>`;
+
+        return `<div class="anonfb-item${d.replied?' replied':''}" id="anonfb-item-${doc.id}">
+          <div class="anonfb-meta">${date}</div>
+          <div class="anonfb-text">${escHtml(d.text)}</div>
+          ${replyBlock}
+        </div>`;
+      }).join('');
+    }, err => {
+      list.innerHTML = '<div class="anonfb-empty">Ошибка загрузки</div>';
+      console.error(err);
+    });
+}
+
+function escHtml(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function sendAnonReply(docId, telegramId, btn) {
+  const ta = document.getElementById(`anonfb-ta-${docId}`);
+  const text = (ta?.value || '').trim();
+  if (!text) { ta?.focus(); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Отправка…';
+
+  try {
+    // Отправляем сотруднику через бота
+    if (telegramId) {
+      await tgSend(telegramId,
+        `📩 <b>Менеджер ответил на твоё анонимное сообщение:</b>\n\n${text}`
+      );
+    }
+
+    // Помечаем как отвеченное в Firestore
+    await db.collection('anonymousFeedback').doc(docId).update({
+      replied: true,
+      replyText: text,
+      repliedAt: new Date().toISOString()
+    });
+
+    // UI обновится через onSnapshot автоматически
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '⚠️ Ошибка — попробуй снова';
+    setTimeout(() => { btn.textContent = 'Отправить ответ'; }, 2500);
+  }
+}
+
+// Перехватываем switchTab для загрузки фидбека
+const _origSwitchTab = switchTab;
+switchTab = function(tab) {
+  _origSwitchTab(tab);
+  if (tab === 'feedback') loadFeedbackTab();
+};
+</script>
+</body>
+</html>
