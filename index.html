@@ -663,7 +663,7 @@ body {
 .sst.active { background: #1e1e32; color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.4); }
 
 /* My shifts horizontal strip */
-.my-shifts-scroll { overflow-x: auto; padding: 0 1rem 0.5rem; -webkit-overflow-scrolling: touch; }
+.my-shifts-scroll { overflow-x: auto; padding: 0 1rem 0.5rem; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .my-shifts-scroll::-webkit-scrollbar { display: none; }
 .my-shifts-strip { display: flex; gap: 0.45rem; padding: 0.5rem 0; width: max-content; }
 .day-card {
@@ -688,6 +688,7 @@ body {
 .full-table-wrap {
   overflow-x: auto; padding: 0 0 0.5rem;
   -webkit-overflow-scrolling: touch; margin-top: 0.2rem;
+  overscroll-behavior: contain;
 }
 .full-table-wrap::-webkit-scrollbar { display: none; }
 .full-table { border-collapse: collapse; font-size: 0.6rem; white-space: nowrap; }
@@ -3436,7 +3437,9 @@ renderEventsList = function() { _origRenderEvents(); applyTwemoji(document.getEl
 </script>
 
 <script>
-// ── МОБИЛЬНАЯ КЛАВИАТУРА: скрываем таб-бар при открытой клавиатуре ──
+// ── МОБИЛЬНАЯ КЛАВИАТУРА: скрываем таб-бар только при фокусе на поле ввода ──
+// Не используем viewportChanged/visualViewport — они срабатывают при горизонтальном
+// скролле на iOS и ложно скрывают таб-бар на вкладке с графиком.
 (function() {
   const tabBar = document.querySelector('.tab-bar');
   if (!tabBar) return;
@@ -3452,32 +3455,7 @@ renderEventsList = function() { _origRenderEvents(); applyTwemoji(document.getEl
     tabBar.classList.add('tb-hidden');
   }
 
-  // Метод 1: Telegram WebApp API — самый надёжный внутри Telegram
-  if (window.Telegram && window.Telegram.WebApp) {
-    const tgWA = window.Telegram.WebApp;
-    tgWA.onEvent('viewportChanged', function() {
-      const stable  = tgWA.viewportStableHeight || window.innerHeight;
-      const current = tgWA.viewportHeight       || window.innerHeight;
-      // Если текущая высота меньше стабильной на >100px — клавиатура открыта
-      if (stable - current > 100) {
-        hideTabBar();
-      } else {
-        showTabBar();
-      }
-    });
-  }
-
-  // Метод 2: visualViewport (браузер / десктоп Telegram)
-  if (window.visualViewport) {
-    let baseHeight = window.visualViewport.height;
-    window.visualViewport.addEventListener('resize', () => {
-      const h = window.visualViewport.height;
-      if (baseHeight - h > 100) { hideTabBar(); }
-      else                       { baseHeight = h; showTabBar(); }
-    });
-  }
-
-  // Метод 3: focus/blur — дополнительная подстраховка
+  // Только focus/blur на полях ввода — надёжный способ без ложных срабатываний
   document.addEventListener('focusin', e => {
     if (e.target.matches('input, textarea, [contenteditable]')) hideTabBar();
   }, true);
