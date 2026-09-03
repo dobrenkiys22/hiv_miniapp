@@ -729,11 +729,18 @@ body {
   font-weight: 700; color: rgba(255,255,255,0.85); min-width: 28px;
 }
 .ft-cell           { color: rgba(255,255,255,0.7); }
-.ft-cell.ft-z-bar    { color: #4caf7d; }   /* зеленый — бар */
-.ft-cell.ft-z-lift   { color: #8ab4f8; }   /* синий — лифт */
-.ft-cell.ft-z-pechka { color: #f5a83e; }   /* оранжевый — печка */
-.ft-cell.ft-z-mangal { color: #F54029; }   /* красный — мангал */
+/* Zone cells — background tint; shift text stays white, zone label gets color */
+.ft-cell.ft-z-bar    { background: rgba(76,175,125,0.14) !important; }
+.ft-cell.ft-z-lift   { background: rgba(138,180,248,0.14) !important; }
+.ft-cell.ft-z-pechka { background: rgba(245,168,62,0.14) !important; }
+.ft-cell.ft-z-mangal { background: rgba(245,64,41,0.14) !important; }
 .ft-cell.ft-off      { color: rgba(255,255,255,0.13); }
+.ft-shift { display: block; color: rgba(255,255,255,0.85); }
+.ft-zone  { display: block; font-size: 0.42rem; margin-top: 1px; opacity: 0.9; }
+.ft-cell.ft-z-bar    .ft-zone { color: #4caf7d; }
+.ft-cell.ft-z-lift   .ft-zone { color: #8ab4f8; }
+.ft-cell.ft-z-pechka .ft-zone { color: #f5a83e; }
+.ft-cell.ft-z-mangal .ft-zone { color: #F54029; }
 .ft-row:nth-child(even) .ft-name-col,
 .ft-row:nth-child(even) .ft-cell { background: rgba(255,255,255,0.015); }
 .ft-row-me .ft-name-col { color: #F54029; font-weight: 800; }
@@ -745,18 +752,22 @@ body {
 }
 /* ── NEXT SHIFT COMPOSITION TAB ── */
 .nsc-date { font-size: 0.7rem; color: rgba(255,255,255,0.35); margin-top: 0.15rem; }
+.nsc-role-header {
+  font-size: 0.5rem; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: rgba(255,255,255,0.28); background: rgba(255,255,255,0.025);
+  padding: 0.3rem 1rem; border-top: 1px solid rgba(255,255,255,0.06);
+}
 .nsc-group {
-  padding: 0.55rem 1rem 0.5rem;
-  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 0.45rem 1rem 0.4rem;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
   display: flex; flex-direction: column; gap: 0.2rem;
 }
 .nsc-shift-row { display: flex; align-items: baseline; gap: 0.5rem; }
 .nsc-shift-label {
-  font-size: 0.72rem; font-weight: 800; color: #F54029;
+  font-size: 0.68rem; font-weight: 800; color: rgba(255,255,255,0.35);
   min-width: 2.8rem; flex-shrink: 0;
 }
-.nsc-names { font-size: 0.8rem; color: rgba(255,255,255,0.82); line-height: 1.4; }
-.nsc-runners { font-size: 0.68rem; color: rgba(255,255,255,0.38); margin-top: 0.05rem; padding-left: 3.3rem; }
+.nsc-names { font-size: 0.82rem; color: rgba(255,255,255,0.82); line-height: 1.5; flex: 1; }
 .nsc-myshift {
   padding: 0.7rem 1rem; margin-top: 0.2rem;
   border-top: 1px solid rgba(255,255,255,0.06);
@@ -1283,15 +1294,22 @@ function zoneKey(zone) {
 // Группа сотрудника: 'pro' | 'waiter' | 'runner'
 const RUNNER_IDS_FALLBACK = new Set(['kirill_igoshin','ilya_proshkin','aytan_shavartaev','nastya_kuznetsova','alex_ivanov','varvara_rytikova','ilya_morozov','mikula_beltsov','marina_sadretdinova','artem_pavlov','ivan_ignatev','vlad_kromov']);
 function empGroup(emp) {
+  // Приоритет — поле sub (как в admin: ПРО/Офики/Ранеры)
+  const sub = (emp.sub || '').toLowerCase().trim();
+  if (sub === 'про') return 'pro';
+  if (sub === 'офики' || sub === 'официанты') return 'waiter';
+  if (sub === 'ранеры' || sub === 'раннеры') return 'runner';
+  // Фоллбек на dept
   const d = (emp.dept || '').toLowerCase().trim();
-  if (d === 'раннер' || d === 'runner') return 'runner';
-  if (d === 'про' || d === 'pro')       return 'pro';
-  if (d === 'официант' || d === 'waiter') return 'waiter';
-  if (d) return 'waiter'; // любой другой dept — официанты
-  // Фоллбек по известным ID
+  if (d === 'ранеры' || d === 'раннер' || d === 'runner') return 'runner';
+  if (d === 'про' || d === 'pro') return 'pro';
+  if (d === 'официант' || d === 'waiter' || d === 'официанты') return 'waiter';
+  if (d) return 'waiter';
   if (RUNNER_IDS_FALLBACK.has(emp.id)) return 'runner';
   return 'waiter';
 }
+// Цвета зон для имён
+const ZONE_COLORS_MAP = { bar:'#4caf7d', lift:'#8ab4f8', pechka:'#f5a83e', mangal:'#F54029' };
 
 // ── RENDER FULL TABLE (Firebase-данные, без горизонтального скролла) ──
 function renderFullTable() {
@@ -1307,9 +1325,10 @@ function renderFullTable() {
   const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
   if (titleEl) titleEl.textContent = `Весь зал — ${month} ${year}`;
 
-  // Группируем всех сотрудников
+  // Группируем и сортируем как в admin (по emp.order)
   const grouped = { pro: [], waiter: [], runner: [] };
   EMPLOYEES.forEach(emp => { const g = empGroup(emp); grouped[g].push(emp); });
+  ['pro','waiter','runner'].forEach(g => grouped[g].sort((a,b)=>(a.order??999)-(b.order??999)));
   const allEmps = [...grouped.pro, ...grouped.waiter, ...grouped.runner];
 
   function buildHalf(elId, labelElId, fromDay, toDay) {
@@ -1349,8 +1368,11 @@ function renderFullTable() {
         } else {
           const parts = val.split('/');
           const shift = parts[0]; const zone = parts[1] || null;
-          const cls = zone ? 'ft-z-' + zoneKey(zone) : '';
-          html += `<td class="ft-cell ${cls}">${shift}</td>`;
+          const zk = zone ? 'ft-z-' + zoneKey(zone) : '';
+          const zColor = zone ? (ZONE_COLORS_MAP[zoneKey(zone)] || '') : '';
+          html += `<td class="ft-cell ${zk}"><span class="ft-shift">${shift}</span>`;
+          if (zone) html += `<span class="ft-zone" style="color:${zColor}">${zone}</span>`;
+          html += `</td>`;
         }
       }
       html += '</tr>';
@@ -1397,22 +1419,56 @@ function renderNextShiftComposition() {
     return;
   }
 
-  // Все коллеги в эту смену — группируем по типу смены
-  const shiftMap = {}; // { 'У': { pro: [...], waiter: [...], runner: [...] } }
+  // Все коллеги в эту смену — группируем по роли + смене
+  const SHIFT_ORDER = ['У','Д12','В15','В16','В18','В'];
+  const byShiftRole = {}; // { shift: { pro:[{name,zone}], waiter:[...], runner:[...] } }
   EMPLOYEES.forEach(emp => {
     if (emp.id === currentEmployee.id) return;
     const val = ((_swapSchedCells[emp.id] || {}).days || {})[nextDay] || '';
     if (!val || val === 'off') return;
-    const shift = val.split('/')[0];
-    if (!shiftMap[shift]) shiftMap[shift] = { pro: [], waiter: [], runner: [] };
-    shiftMap[shift][empGroup(emp)].push(emp.name);
+    const parts = val.split('/');
+    const shift = parts[0]; const zone = parts[1] || null;
+    const g = empGroup(emp);
+    if (!byShiftRole[shift]) byShiftRole[shift] = { pro:[], waiter:[], runner:[] };
+    byShiftRole[shift][g].push({ name: emp.name, zone });
   });
 
-  const SHIFT_ORDER = ['У','Д12','В15','В16','В18'];
-  const sortedShifts = Object.keys(shiftMap).sort((a, b) => {
+  // Собираем по ролям: официанты (pro+waiter), раннеры (runner)
+  const roleEmps = { official: [], runner: [] };
+  Object.keys(byShiftRole).sort((a,b) => {
     const ai = SHIFT_ORDER.indexOf(a), bi = SHIFT_ORDER.indexOf(b);
-    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    return (ai<0?99:ai) - (bi<0?99:bi);
+  }).forEach(shift => {
+    const g = byShiftRole[shift];
+    [...g.pro, ...g.waiter].forEach(e => roleEmps.official.push({ ...e, shift }));
+    g.runner.forEach(e => roleEmps.runner.push({ ...e, shift }));
   });
+
+  // Спан имени с цветом зоны
+  function nameSpan(e) {
+    const zk = zoneKey(e.zone);
+    const color = zk ? (ZONE_COLORS_MAP[zk] || 'rgba(255,255,255,0.82)') : 'rgba(255,255,255,0.82)';
+    return `<span style="color:${color};font-weight:${zk?'700':'400'}">${e.name}</span>`;
+  }
+  // Рендер секции роли
+  function renderRoleSection(label, emps) {
+    if (!emps.length) return '';
+    let h = `<div class="nsc-role-header">${label}</div>`;
+    // Группируем по смене
+    const byShift = {};
+    emps.forEach(e => { if (!byShift[e.shift]) byShift[e.shift]=[]; byShift[e.shift].push(e); });
+    Object.keys(byShift).sort((a,b) => {
+      const ai = SHIFT_ORDER.indexOf(a), bi = SHIFT_ORDER.indexOf(b);
+      return (ai<0?99:ai) - (bi<0?99:bi);
+    }).forEach(shift => {
+      const names = byShift[shift].map(nameSpan).join('<span style="color:rgba(255,255,255,0.2)"> · </span>');
+      h += `<div class="nsc-group"><div class="nsc-shift-row">`;
+      h += `<span class="nsc-shift-label">${shift}</span>`;
+      h += `<span class="nsc-names">${names}</span>`;
+      h += `</div></div>`;
+    });
+    return h;
+  }
 
   const MONTH_NAMES = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
   const DOW_ACC = ['воскресенье','понедельник','вторник','среду','четверг','пятницу','субботу'];
@@ -1424,24 +1480,18 @@ function renderNextShiftComposition() {
     <div class="nsc-date">${dateStr}</div>
   </div>`;
 
-  if (!sortedShifts.length) {
+  if (!roleEmps.official.length && !roleEmps.runner.length) {
     html += `<div style="padding:1.5rem 1rem;color:rgba(255,255,255,0.3);font-size:0.82rem;">Нет данных о коллегах</div>`;
   } else {
-    sortedShifts.forEach(shift => {
-      const g = shiftMap[shift];
-      const staff = [...g.pro, ...g.waiter];
-      const runners = g.runner;
-      html += `<div class="nsc-group"><div class="nsc-shift-row">`;
-      html += `<span class="nsc-shift-label">${shift}</span>`;
-      html += `<span class="nsc-names">${staff.length ? staff.join(', ') : (runners.length ? '' : '—')}</span>`;
-      html += `</div>`;
-      if (runners.length) html += `<div class="nsc-runners">Раннеры: ${runners.join(', ')}</div>`;
-      html += `</div>`;
-    });
+    html += renderRoleSection('Официанты', roleEmps.official);
+    html += renderRoleSection('Раннеры', roleEmps.runner);
   }
 
   const myShiftType = myShiftVal.split('/')[0];
-  html += `<div class="nsc-myshift">Твоя смена: <span style="color:#F54029;font-weight:700">${myShiftType}</span></div>`;
+  const myZone = myShiftVal.split('/')[1] || null;
+  const myZk = zoneKey(myZone);
+  const myColor = myZk ? (ZONE_COLORS_MAP[myZk] || '#F54029') : '#F54029';
+  html += `<div class="nsc-myshift">Твоя смена: <span style="color:${myColor};font-weight:700">${myShiftType}${myZone?' · '+myZone:''}</span></div>`;
   el.innerHTML = html;
 }
 
