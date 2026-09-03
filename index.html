@@ -27,6 +27,7 @@ body {
   justify-content: center;
   padding: 2rem 1rem;
   font-family: 'Halvar', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  overscroll-behavior: none; /* prevent rubber-band from propagating to tab bar */
 }
 
 /* ── PAGE LABEL ── */
@@ -54,6 +55,7 @@ body {
   position: relative;
   display: flex;
   flex-direction: column;
+  overscroll-behavior: none;
 }
 
 /* ── MOBILE / TELEGRAM FULLSCREEN ── */
@@ -124,6 +126,7 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 0 0 1rem;
+  overscroll-behavior-y: contain; /* stop scroll from propagating up to body/tab-bar */
 }
 .tab-content::-webkit-scrollbar { display: none; }
 
@@ -817,8 +820,14 @@ body {
     </div>
     <div class="login-title">Вход для сотрудников</div>
     <div class="login-sub">Введи свой личный пароль</div>
-    <input class="login-input" id="login-pwd" type="password" placeholder="••••••" autocomplete="off" maxlength="20"
-      onkeydown="if(event.key==='Enter')doLogin()">
+    <div style="position:relative;margin-bottom:0.75rem;">
+      <input class="login-input" id="login-pwd" type="password" placeholder="••••••" autocomplete="off" maxlength="20"
+        onkeydown="if(event.key==='Enter')doLogin()" style="margin-bottom:0;padding-right:3rem;">
+      <button type="button" id="eye-btn" onclick="togglePwd()" style="position:absolute;right:0.9rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#F54029;padding:0.25rem;line-height:0;display:flex;align-items:center;">
+        <svg id="eye-icon-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F54029" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <svg id="eye-icon-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F54029" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+      </button>
+    </div>
     <button class="login-btn" onclick="doLogin()">Войти →</button>
     <div class="login-error" id="login-err"></div>
   </div>
@@ -2190,7 +2199,6 @@ function restoreSession() {
 
 loadEmployeesFromFirebase();
 loadEventsFromFirestore();
-renderBirthdays();
 
 // Рендер полосы из Firebase-данных
 function renderMyStripFirebase(containerId, days, dowFn, startDay, endDay) {
@@ -2283,6 +2291,7 @@ const BIRTHDAYS_DATA = [
   { initials: 'БО', name: 'Благов Олег',       month: 10, day: 6  },
 ];
 const MONTHS_RU_BDAY = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+renderBirthdays(); // вызов после инициализации данных
 
 function daysUntilBirthday(month, day) {
   const now = new Date();
@@ -2327,8 +2336,8 @@ function renderMiniEvents() {
   container.innerHTML = upcoming.map(ev => {
     const evIdx = EVENTS.indexOf(ev);
     const regBadge = ev.sheetUrl
-      ? `<span style="font-size:0.58rem;background:rgba(245,64,41,0.15);color:#F54029;border:1px solid rgba(245,64,41,0.35);padding:0.08rem 0.35rem;border-radius:6px;font-weight:700;margin-left:4px;vertical-align:middle;">регистрация открыта</span>`
-      : '';
+      ? `<span style="font-size:0.58rem;background:rgba(245,64,41,0.15);color:#F54029;border:1px solid rgba(245,64,41,0.35);padding:0.08rem 0.35rem;border-radius:6px;font-weight:700;margin-left:4px;vertical-align:middle;">🔴 регистрация открыта</span>`
+      : `<span style="font-size:0.58rem;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.35);border:1px solid rgba(255,255,255,0.1);padding:0.08rem 0.35rem;border-radius:6px;font-weight:600;margin-left:4px;vertical-align:middle;">регистрация не открыта</span>`;
     return `<div class="mini-event-row" onclick="openEvModal(${evIdx})" style="cursor:pointer;">
       <div class="me-dot" style="background:${dotColors[ev.type]||'#8ab4f8'};"></div>
       <div class="me-text">
@@ -2345,9 +2354,20 @@ async function loadAndRenderSchedule(employeeDocId) {
   // Отписываемся от предыдущего listener
   if (_scheduleUnsubscribe) { _scheduleUnsubscribe(); _scheduleUnsubscribe = null; }
 
+  const shiftContainer = document.getElementById('next-shift-container');
+  if (!db) {
+    if (shiftContainer) shiftContainer.innerHTML = `<div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">Нет связи с сервером</div></div>`;
+    renderMiniEvents();
+    return;
+  }
+
   try {
     const cfgSnap = await db.collection('config').doc('main').get();
-    if (!cfgSnap.exists) return;
+    if (!cfgSnap.exists) {
+      if (shiftContainer) shiftContainer.innerHTML = `<div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">Расписание не настроено</div></div>`;
+      renderMiniEvents();
+      return;
+    }
     const cfg = cfgSnap.data();
     const { month, year, periodStart, periodEnd } = cfg;
     const monthIdx = MONTHS_RU[month.toLowerCase()] ?? 8;
@@ -2376,11 +2396,11 @@ async function loadAndRenderSchedule(employeeDocId) {
 
   } catch(e) {
     console.log('[HiV] Schedule load error:', e.message);
+    if (shiftContainer) shiftContainer.innerHTML = `<div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">Ошибка загрузки</div></div>`;
     const labelEl = document.getElementById('sched-period-label');
     if (labelEl) labelEl.textContent = 'Ошибка загрузки расписания';
+    renderMiniEvents();
   }
-  // Обновляем мини-события на главной
-  renderMiniEvents();
 }
 
 // ── AUTH ──
@@ -2511,6 +2531,9 @@ function loginEmployee(employee) {
   saveSession(employee);
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = '';
+  // Гарантируем видимость таб-бара (может быть скрыт клавиатурой)
+  const tb = document.querySelector('.tab-bar');
+  if (tb) tb.classList.remove('tb-hidden');
   const greet = document.getElementById('greeting-name');
   if (greet) greet.textContent = 'Привет, ' + employee.name + ' ❤️';
   // Реальная дата
@@ -2533,6 +2556,16 @@ function doLogout() {
   document.getElementById('login-screen').style.display = '';
   document.getElementById('login-pwd').value = '';
   document.getElementById('login-err').textContent = '';
+}
+
+function togglePwd() {
+  const inp = document.getElementById('login-pwd');
+  const iconOpen = document.getElementById('eye-icon-open');
+  const iconClosed = document.getElementById('eye-icon-closed');
+  const isHidden = inp.type === 'password';
+  inp.type = isHidden ? 'text' : 'password';
+  if (iconOpen) iconOpen.style.display = isHidden ? 'none' : '';
+  if (iconClosed) iconClosed.style.display = isHidden ? '' : 'none';
 }
 
 function doLogin() {
@@ -3408,34 +3441,55 @@ renderEventsList = function() { _origRenderEvents(); applyTwemoji(document.getEl
   const tabBar = document.querySelector('.tab-bar');
   if (!tabBar) return;
 
-  // Используем фокус/блюр на input/textarea вместо visualViewport
-  // (visualViewport в Telegram Mini App ведёт себя непредсказуемо)
-  let keyboardTimer = null;
+  let kbTimer = null;
 
-  function onFocus(e) {
-    if (e.target.matches('input, textarea, [contenteditable]')) {
-      if (keyboardTimer) clearTimeout(keyboardTimer);
-      tabBar.classList.add('tb-hidden');
-    }
+  function showTabBar() {
+    if (kbTimer) clearTimeout(kbTimer);
+    kbTimer = setTimeout(() => tabBar.classList.remove('tb-hidden'), 200);
+  }
+  function hideTabBar() {
+    if (kbTimer) clearTimeout(kbTimer);
+    tabBar.classList.add('tb-hidden');
   }
 
-  function onBlur(e) {
-    if (e.target.matches('input, textarea, [contenteditable]')) {
-      if (keyboardTimer) clearTimeout(keyboardTimer);
-      keyboardTimer = setTimeout(() => tabBar.classList.remove('tb-hidden'), 150);
-    }
-  }
-
-  document.addEventListener('focusin',  onFocus, true);
-  document.addEventListener('focusout', onBlur, true);
-
-  // Нажатие вне поля ввода → снимаем фокус (закрываем клавиатуру)
-  document.addEventListener('touchend', function(e) {
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA') {
-      if (!e.target.closest('input, textarea')) {
-        document.activeElement.blur();
+  // Метод 1: Telegram WebApp API — самый надёжный внутри Telegram
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tgWA = window.Telegram.WebApp;
+    tgWA.onEvent('viewportChanged', function() {
+      const stable  = tgWA.viewportStableHeight || window.innerHeight;
+      const current = tgWA.viewportHeight       || window.innerHeight;
+      // Если текущая высота меньше стабильной на >100px — клавиатура открыта
+      if (stable - current > 100) {
+        hideTabBar();
+      } else {
+        showTabBar();
       }
+    });
+  }
+
+  // Метод 2: visualViewport (браузер / десктоп Telegram)
+  if (window.visualViewport) {
+    let baseHeight = window.visualViewport.height;
+    window.visualViewport.addEventListener('resize', () => {
+      const h = window.visualViewport.height;
+      if (baseHeight - h > 100) { hideTabBar(); }
+      else                       { baseHeight = h; showTabBar(); }
+    });
+  }
+
+  // Метод 3: focus/blur — дополнительная подстраховка
+  document.addEventListener('focusin', e => {
+    if (e.target.matches('input, textarea, [contenteditable]')) hideTabBar();
+  }, true);
+  document.addEventListener('focusout', e => {
+    if (e.target.matches('input, textarea, [contenteditable]')) showTabBar();
+  }, true);
+
+  // Тап вне поля ввода → снимаем фокус
+  document.addEventListener('touchend', e => {
+    const tag = document.activeElement && document.activeElement.tagName;
+    if ((tag === 'INPUT' || tag === 'TEXTAREA') && !e.target.closest('input, textarea')) {
+      document.activeElement.blur();
     }
   }, { passive: true });
 })();
