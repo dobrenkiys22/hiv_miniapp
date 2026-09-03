@@ -700,25 +700,27 @@ body {
   text-transform: uppercase; letter-spacing: 0.08em;
   padding: 0.6rem 1rem 0.2rem;
 }
-.full-table { border-collapse: collapse; font-size: 0.56rem; white-space: nowrap; table-layout: fixed; width: 100%; }
+.full-table { border-collapse: separate; border-spacing: 0; font-size: 0.56rem; white-space: nowrap; table-layout: fixed; width: 100%; }
 .full-table th, .full-table td { padding: 0; }
 .ft-name-col {
   position: sticky; left: 0; z-index: 2;
   background: #0d0d0d; padding: 0.3rem 0.5rem 0.3rem 1rem;
   font-weight: 600; color: rgba(255,255,255,0.7);
   border-right: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 1px solid rgba(255,255,255,0.04);
   font-size: 0.62rem; max-width: 80px; overflow: hidden; text-overflow: ellipsis;
 }
 .ft-head-name {
-  position: sticky; left: 0; z-index: 3;
+  position: sticky; left: 0; top: 0; z-index: 5;
   background: #1a1a2a; padding: 0.3rem 0.5rem 0.3rem 1rem;
   border-right: 1px solid rgba(255,255,255,0.08);
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 2px solid rgba(255,255,255,0.12);
   font-size: 0.6rem; color: rgba(255,255,255,0.4); font-weight: 600;
 }
 .ft-head-day {
+  position: sticky; top: 0; z-index: 4;
   background: #1a1a2a; padding: 0.3rem 0.2rem;
-  border-bottom: 1px solid rgba(255,255,255,0.08);
+  border-bottom: 2px solid rgba(255,255,255,0.12);
   text-align: center; color: rgba(255,255,255,0.4); font-weight: 600;
   min-width: 28px;
 }
