@@ -1362,12 +1362,12 @@ function renderFullTable() {
       html += `<tr class="ft-row${isMe?' ft-row-me':''}">`;
       html += `<td class="ft-name-col">${emp.name}</td>`;
       for (let d = fromDay; d <= toDay; d++) {
-        const val = ((_swapSchedCells[emp.id] || {}).days || {})[d] || '';
-        if (!val || val === 'off') {
+        const empData = _swapSchedCells[emp.id] || {};
+        const shift = (empData.days || {})[d] || '';
+        const zone  = (empData.zones || {})[d] || null;
+        if (!shift || shift === 'off') {
           html += `<td class="ft-cell ft-off">·</td>`;
         } else {
-          const parts = val.split('/');
-          const shift = parts[0]; const zone = parts[1] || null;
           const zk = zone ? 'ft-z-' + zoneKey(zone) : '';
           const zColor = zone ? (ZONE_COLORS_MAP[zoneKey(zone)] || '') : '';
           html += `<td class="ft-cell ${zk}"><span class="ft-shift">${shift}</span>`;
@@ -1405,7 +1405,9 @@ function renderNextShiftComposition() {
     return;
   }
   const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
-  const myDays = ((_swapSchedCells[currentEmployee.id] || {}).days) || {};
+  const myEmpData = _swapSchedCells[currentEmployee.id] || {};
+  const myDays  = myEmpData.days  || {};
+  const myZones = myEmpData.zones || {};
 
   // Ищем следующую рабочую смену
   const today = new Date().getDate();
@@ -1424,10 +1426,10 @@ function renderNextShiftComposition() {
   const byShiftRole = {}; // { shift: { pro:[{name,zone}], waiter:[...], runner:[...] } }
   EMPLOYEES.forEach(emp => {
     if (emp.id === currentEmployee.id) return;
-    const val = ((_swapSchedCells[emp.id] || {}).days || {})[nextDay] || '';
-    if (!val || val === 'off') return;
-    const parts = val.split('/');
-    const shift = parts[0]; const zone = parts[1] || null;
+    const empData = _swapSchedCells[emp.id] || {};
+    const shift = (empData.days || {})[nextDay] || '';
+    if (!shift || shift === 'off') return;
+    const zone = (empData.zones || {})[nextDay] || null;
     const g = empGroup(emp);
     if (!byShiftRole[shift]) byShiftRole[shift] = { pro:[], waiter:[], runner:[] };
     byShiftRole[shift][g].push({ name: emp.name, zone });
@@ -1487,8 +1489,8 @@ function renderNextShiftComposition() {
     html += renderRoleSection('Раннеры', roleEmps.runner);
   }
 
-  const myShiftType = myShiftVal.split('/')[0];
-  const myZone = myShiftVal.split('/')[1] || null;
+  const myShiftType = myShiftVal;
+  const myZone = myZones[nextDay] || null;
   const myZk = zoneKey(myZone);
   const myColor = myZk ? (ZONE_COLORS_MAP[myZk] || '#F54029') : '#F54029';
   html += `<div class="nsc-myshift">Твоя смена: <span style="color:${myColor};font-weight:700">${myShiftType}${myZone?' · '+myZone:''}</span></div>`;
@@ -2629,6 +2631,13 @@ async function loadAndRenderSchedule(employeeDocId) {
       function dowFn(d) { return new Date(year, monthIdx, d).getDay(); }
       renderMyStripFirebase('my-strip', days, dowFn, periodStart, periodEnd);
       renderNextShift(days, year, monthIdx, periodStart, periodEnd);
+      // Live-обновление открытых вкладок "Весь зал" и "Состав смены"
+      const activeSub = ['mine','next','all'].find(id => {
+        const el = document.getElementById('sub-' + id);
+        return el && el.style.display !== 'none';
+      });
+      if (activeSub === 'all')  renderFullTable();
+      if (activeSub === 'next') renderNextShiftComposition();
     }, err => console.log('[HiV] onSnapshot error:', err.message));
 
     const prevSection = document.getElementById('sched-prev-section');
