@@ -2791,11 +2791,11 @@ function loginEmployee(employee) {
   const now = new Date();
   const dateEl = document.getElementById('greeting-date');
   if (dateEl) dateEl.textContent = DAYS_RU[now.getDay()] + ', ' + now.getDate() + ' ' + MONTHS_RU_GEN[now.getMonth()];
-  loadAndRenderSchedule(employee.id);
-  saveTelegramId(employee.id); // сохраняем TG id для отправки ответов
-  startSwapRequestsListener();
-  startEmpDocListener(employee.id);
-  renderAchTab(employee);
+  try { loadAndRenderSchedule(employee.id); } catch(e) { console.warn('[HiV] loadAndRenderSchedule error:', e.message); }
+  try { saveTelegramId(employee.id); } catch(e) {}
+  try { startSwapRequestsListener(); } catch(e) { console.warn('[HiV] swapListener error:', e.message); }
+  try { startEmpDocListener(employee.id); } catch(e) { console.warn('[HiV] empDocListener error:', e.message); }
+  try { renderAchTab(employee); } catch(e) { console.warn('[HiV] renderAchTab error:', e.message); }
 }
 
 function doLogout() {
@@ -3391,6 +3391,7 @@ async function sendGiveRequest() {
 
 function startEmpDocListener(empId) {
   if (_empDocUnsubscribe) { _empDocUnsubscribe(); _empDocUnsubscribe = null; }
+  if (!db) return;
   _empDocUnsubscribe = db.collection('employees').doc(empId).onSnapshot(snap => {
     if (!snap.exists || !currentEmployee) return;
     const d = snap.data();
@@ -3407,7 +3408,7 @@ function startEmpDocListener(empId) {
 
 function startSwapRequestsListener() {
   if (_swapUnsubscribe) { _swapUnsubscribe(); _swapUnsubscribe = null; }
-  if (!currentEmployee) return;
+  if (!currentEmployee || !db) return;
   const myId = currentEmployee.id;
 
   _swapUnsubscribe = db.collection('swapRequests')
