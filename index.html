@@ -3343,21 +3343,24 @@ async function loadMgrSchedule() {
   if (!db || !currentManager) return;
   const cont = document.getElementById('mgr-sched-content');
   const nextShiftCont = document.getElementById('mgr-next-shift-container');
+  const noSched = () => {
+    if (nextShiftCont) nextShiftCont.innerHTML = `<div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">График не составлен</div></div>`;
+  };
   try {
     const cfgDoc = await db.collection('config').doc('main').get();
     const cfg = cfgDoc.data() || {};
     const { month, year, periodStart, periodEnd } = cfg;
-    if (!month) return;
-    const monthIdx = MONTHS_RU[(month || '').toLowerCase()]; // исправлен регистр
-    if (monthIdx === undefined) return;
+    if (!month) { noSched(); return; }
+    const monthIdx = MONTHS_RU[(month || '').toLowerCase()];
+    if (monthIdx === undefined) { noSched(); return; }
     const schedId = year + '_' + String(monthIdx + 1).padStart(2,'0');
     const schedDoc = await db.collection('schedules').doc(schedId).get();
-    if (!schedDoc.exists) return;
+    if (!schedDoc.exists) { noSched(); return; }
     const data = schedDoc.data();
     const mgrData = (data.managers || {})[currentManager.id];
     if (!mgrData) {
       if (cont) cont.innerHTML = '<div class="card" style="padding:1rem;color:rgba(255,255,255,0.4);text-align:center;">График не составлен</div>';
-      return;
+      noSched(); return;
     }
     const days  = mgrData.days  || {};
     const zones = mgrData.zones || {};
@@ -3385,7 +3388,7 @@ async function loadMgrSchedule() {
         nextShiftCont.innerHTML = `<div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">Смен нет</div></div>`;
       }
     }
-  } catch(e) { console.warn('[HiV] loadMgrSchedule error:', e.message); }
+  } catch(e) { console.warn('[HiV] loadMgrSchedule error:', e.message); noSched(); }
 }
 
 // ── MANAGER TASKS ──
@@ -3546,7 +3549,7 @@ function renderMgrMiniEvents() {
     }).slice(0,3);
     if (!upcoming.length) { el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Нет событий</div>'; return; }
     el.innerHTML = upcoming.map(ev => `<div style="padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-      <div style="font-size:0.82rem;font-weight:600;">${ev.title}</div>
+      <div style="font-size:0.82rem;font-weight:600;color:#fff;">${ev.title}</div>
       <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${fmtEvDate(ev)}</div>
     </div>`).join('');
   } else {
