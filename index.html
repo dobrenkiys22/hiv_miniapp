@@ -990,6 +990,10 @@ body {
         <div class="my-shifts-scroll">
           <div class="my-shifts-strip" id="my-strip"></div>
         </div>
+        <div id="next-period-section" style="display:none;margin-top:0.8rem;">
+          <div id="next-period-label" style="font-size:0.68rem;font-weight:600;color:rgba(255,255,255,0.4);padding:0.4rem 0 0.2rem;letter-spacing:.04em;border-top:1px solid rgba(255,255,255,0.08);margin-top:0.4rem;padding-top:0.6rem;"></div>
+          <div class="my-shifts-strip" id="my-strip-next"></div>
+        </div>
         <div id="sched-prev-section" style="display:none;">
           <div class="section" style="margin-top:0.9rem;">
             <div class="s-label" id="sched-prev-label"></div>
@@ -1454,9 +1458,9 @@ function renderNextShiftComposition(selectedDay) {
     const isToday = d === today;
     const myShift = myDays[d];
     const hasMine = myShift && myShift !== 'off';
-    const bg = isSelected ? '#F54029' : hasMine ? 'rgba(245,64,41,0.2)' : 'rgba(255,255,255,0.07)';
-    const color = isSelected ? '#fff' : hasMine ? '#F54029' : 'rgba(255,255,255,0.6)';
-    const border = isToday && !isSelected ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent';
+    const bg = isSelected ? '#F54029' : hasMine ? 'rgba(76,175,125,0.18)' : 'rgba(245,64,41,0.12)';
+    const color = isSelected ? '#fff' : hasMine ? '#4caf7d' : 'rgba(230,80,60,0.85)';
+    const border = isToday && !isSelected ? '1px solid rgba(255,255,255,0.3)' : hasMine ? '1px solid rgba(76,175,125,0.3)' : '1px solid rgba(245,64,41,0.2)';
     pickerHtml += `<button onclick="renderNextShiftComposition(${d})" style="flex-shrink:0;background:${bg};color:${color};border:${border};border-radius:8px;padding:0.3rem 0.5rem;font-size:0.7rem;cursor:pointer;min-width:36px;text-align:center;font-family:inherit;line-height:1.2;">
       <div style="font-weight:700">${d}</div>
       <div style="opacity:0.8;font-size:0.6rem">${DOW_SHORT[dow]}</div>
@@ -1486,18 +1490,46 @@ function renderNextShiftComposition(selectedDay) {
     else waiters.push(entry);
   });
 
+  function shiftOrder(s) {
+    const v = (s||'').toUpperCase();
+    if (v.startsWith('У')) return 0;
+    if (v.startsWith('Д')) return 1;
+    if (v === 'Б' || v.startsWith('БВ') || v.startsWith('Б1') || v.startsWith('Б2')) return 2;
+    if (v.startsWith('В') || v.startsWith('Б')) return 3;
+    return 4;
+  }
+  function shiftLabel(s) {
+    const v = (s||'').toUpperCase();
+    if (v.startsWith('У')) return 'Утро';
+    if (v.startsWith('Д')) return 'День';
+    if (v === 'Б' || v.startsWith('БВ') || v.startsWith('Б1') || v.startsWith('Б2')) return 'Бар';
+    if (v.startsWith('В')) return 'Вечер';
+    return '';
+  }
   function renderGroup(label, list) {
     if (!list.length) return '';
-    let h = `<div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,0.35);padding:0.6rem 0 0.25rem;">${label}</div>`;
-    h += `<div style="display:flex;flex-wrap:wrap;gap:0.35rem;">`;
-    for (const {emp, shift, zone, nameStyle, zColor} of list) {
-      const zoneBadge = zone ? `<span style="font-size:0.58rem;color:${zColor||'rgba(255,255,255,0.5)'};margin-left:0.25rem">${zone}</span>` : '';
-      h += `<div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:0.3rem 0.55rem;font-size:0.72rem;display:flex;align-items:center;gap:0.2rem;">
-        <span style="${nameStyle}">${emp.name}</span>
-        <span style="color:rgba(255,255,255,0.4);font-size:0.65rem">${shift}</span>${zoneBadge}
-      </div>`;
+    // Sort by shift time order
+    const sorted = [...list].sort((a,b) => shiftOrder(a.shift) - shiftOrder(b.shift));
+    // Group by shift label
+    const groups = {};
+    for (const item of sorted) {
+      const sl = shiftLabel(item.shift) || item.shift;
+      if (!groups[sl]) groups[sl] = [];
+      groups[sl].push(item);
     }
-    h += `</div>`;
+    let h = `<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,0.35);padding:0.75rem 0 0.3rem;">${label}</div>`;
+    for (const [slabel, items] of Object.entries(groups)) {
+      h += `<div style="font-size:0.6rem;color:rgba(255,255,255,0.3);padding:0.15rem 0 0.2rem;letter-spacing:.04em;">${slabel}</div>`;
+      for (const {emp, shift, zone, zColor} of items) {
+        const zoneBadge = zone ? `<span style="font-size:0.65rem;color:${zColor||'rgba(255,255,255,0.5)'};font-weight:600">${zone}</span>` : '';
+        const nameColor = zColor ? zColor : 'rgba(255,255,255,0.9)';
+        h += `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.28rem 0.5rem;margin-bottom:0.15rem;background:rgba(255,255,255,0.04);border-radius:8px;">
+          <span style="color:${nameColor};font-size:0.8rem;font-weight:600;min-width:60px">${emp.name}</span>
+          <span style="color:rgba(255,255,255,0.35);font-size:0.7rem">${shift}</span>
+          ${zoneBadge}
+        </div>`;
+      }
+    }
     return h;
   }
 
@@ -2644,8 +2676,26 @@ async function loadAndRenderSchedule(employeeDocId) {
     }
     const cfg = cfgSnap.data();
     const { month, year, periodStart, periodEnd } = cfg;
+    const nextPeriod = cfg.nextPeriod || null;
     const monthIdx = MONTHS_RU[month.toLowerCase()] ?? 8;
     const schedId = `${year}_${month}_${periodStart}-${periodEnd}`;
+
+    // Two-period logic
+    const todayForPeriod = new Date().getDate();
+    const todayMonth = new Date().getMonth(); // 0-indexed
+    const curMonthIdx = MONTHS_RU[month.toLowerCase()] ?? todayMonth;
+    let showNextPeriod = null;
+    if (nextPeriod && nextPeriod.published) {
+      const npMonthIdx = MONTHS_RU[(nextPeriod.month||'').toLowerCase()] ?? -1;
+      // Next period is in the future: show both if today < nextPeriod.periodStart (same month)
+      // or if current month hasn't ended yet and next period is in a different month
+      const sameMonth = npMonthIdx === curMonthIdx;
+      const nextStarted = sameMonth ? (todayForPeriod >= nextPeriod.periodStart) : (todayMonth >= npMonthIdx || (todayMonth > curMonthIdx));
+      if (!nextStarted) {
+        showNextPeriod = nextPeriod; // show both
+      }
+      // If next period has started, don't show current (admin should update config.main)
+    }
 
     const labelEl = document.getElementById('sched-period-label');
     const empName = currentEmployee ? currentEmployee.name : '';
@@ -2664,6 +2714,28 @@ async function loadAndRenderSchedule(employeeDocId) {
       function dowFn(d) { return new Date(year, monthIdx, d).getDay(); }
       renderMyStripFirebase('my-strip', days, zones, dowFn, periodStart, periodEnd);
       renderNextShift(days, year, monthIdx, periodStart, periodEnd);
+      // Next period rendering
+      const npSection = document.getElementById('next-period-section');
+      if (showNextPeriod && npSection) {
+        npSection.style.display = '';
+        const npLabel = document.getElementById('next-period-label');
+        if (npLabel) npLabel.textContent = `${showNextPeriod.month} ${showNextPeriod.year} (${showNextPeriod.periodStart}–${showNextPeriod.periodEnd})`;
+        // Load next period schedule
+        const npSchedId = `${showNextPeriod.year}_${showNextPeriod.month}_${showNextPeriod.periodStart}-${showNextPeriod.periodEnd}`;
+        if (db) {
+          db.collection('schedules').doc(npSchedId).get().then(npSnap => {
+            const npCells = npSnap.exists ? (npSnap.data().cells || {}) : {};
+            const npEmpData = npCells[employeeDocId] || {};
+            const npDays = npEmpData.days || {};
+            const npZones = npEmpData.zones || {};
+            const npMonthIdx = MONTHS_RU[(showNextPeriod.month||'').toLowerCase()] ?? 8;
+            function npDowFn(d) { return new Date(showNextPeriod.year, npMonthIdx, d).getDay(); }
+            renderMyStripFirebase('my-strip-next', npDays, npZones, npDowFn, showNextPeriod.periodStart, showNextPeriod.periodEnd);
+          }).catch(e => console.warn('[HiV] next period load error:', e.message));
+        }
+      } else if (npSection) {
+        npSection.style.display = 'none';
+      }
       // Live-обновление открытых вкладок "Весь зал" и "Состав смены"
       const activeSub = ['mine','next','all'].find(id => {
         const el = document.getElementById('sub-' + id);

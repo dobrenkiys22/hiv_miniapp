@@ -1416,6 +1416,23 @@ a { color: var(--gold); }
               <button class="btn-xs red" onclick="clearExceptions()">Удалить исключения</button>
             </div>
           </div>
+          <!-- Next Period -->
+          <div class="adm-section" id="next-period-card">
+            <h3>📅 Следующий период</h3>
+            <div class="adm-row">
+              <div class="adm-f"><label>Месяц</label><input id="np-month" placeholder="октябрь"></div>
+              <div class="adm-f"><label>Год</label><input id="np-year" type="number" placeholder="2026"></div>
+            </div>
+            <div class="adm-row">
+              <div class="adm-f"><label>День начала</label><input id="np-start" type="number" min="1" max="31"></div>
+              <div class="adm-f"><label>День конца</label><input id="np-end" type="number" min="1" max="31"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn-xs prim" onclick="publishNextPeriod()">✅ Опубликовать сотрудникам</button>
+              <button class="btn-xs" onclick="unpublishNextPeriod()">Скрыть</button>
+            </div>
+            <div id="np-status" style="font-size:0.75rem;color:var(--t-ghost);margin-top:0.5rem;"></div>
+          </div>
           <!-- Push Notifications -->
           <div class="adm-section">
             <h3>🔔 Push-уведомления</h3>
@@ -2258,6 +2275,20 @@ function renderAdmin() {
   document.getElementById('cfg-ckey').value     = appCfg.claudeApiKey || '';
   const dlEl = document.getElementById('cfg-deadline');
   if (dlEl) dlEl.value = appCfg.wishDeadline || '';
+  // Pre-fill next period if exists
+  if (appCfg.nextPeriod) {
+    const np = appCfg.nextPeriod;
+    const npMonthEl = document.getElementById('np-month');
+    const npYearEl = document.getElementById('np-year');
+    const npStartEl = document.getElementById('np-start');
+    const npEndEl = document.getElementById('np-end');
+    if (npMonthEl) npMonthEl.value = np.month || '';
+    if (npYearEl) npYearEl.value = np.year || '';
+    if (npStartEl) npStartEl.value = np.periodStart || '';
+    if (npEndEl) npEndEl.value = np.periodEnd || '';
+    const npStatus = document.getElementById('np-status');
+    if (npStatus && np.published) npStatus.textContent = `✅ Опубликовано: ${np.month} ${np.year} (${np.periodStart}–${np.periodEnd})`;
+  }
   document.getElementById('emp-count').textContent = employees.length;
   const list = document.getElementById('emp-list-admin');
   const ADMIN_GROUPS = [
@@ -2334,6 +2365,34 @@ async function savePeriodCfg() {
     toast('Настройки сохранены');
   } catch(e) { toast('Ошибка сохранения'); }
 }
+async function publishNextPeriod() {
+  const month = document.getElementById('np-month').value.trim();
+  const year = parseInt(document.getElementById('np-year').value) || new Date().getFullYear();
+  const periodStart = parseInt(document.getElementById('np-start').value);
+  const periodEnd = parseInt(document.getElementById('np-end').value);
+  if (!month || !periodStart || !periodEnd) {
+    document.getElementById('np-status').textContent = '⚠️ Заполни все поля';
+    return;
+  }
+  try {
+    await db.collection('config').doc('main').update({
+      nextPeriod: { month, year, periodStart, periodEnd, published: true }
+    });
+    document.getElementById('np-status').textContent = `✅ Опубликовано: ${month} ${year} (${periodStart}–${periodEnd})`;
+  } catch(e) {
+    document.getElementById('np-status').textContent = '❌ Ошибка: ' + e.message;
+  }
+}
+
+async function unpublishNextPeriod() {
+  try {
+    await db.collection('config').doc('main').update({ nextPeriod: firebase.firestore.FieldValue.delete() });
+    document.getElementById('np-status').textContent = 'Скрыто от сотрудников';
+  } catch(e) {
+    document.getElementById('np-status').textContent = '❌ Ошибка: ' + e.message;
+  }
+}
+
 async function addEmp() {
   const name   = document.getElementById('ne-name').value.trim();
   const pin    = document.getElementById('ne-pin').value.trim();
