@@ -582,6 +582,20 @@ body {
   text-align: center; font-size: 0.78rem; color: rgba(255,255,255,0.3);
   padding: 0.8rem; border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px;
 }
+/* RSVP */
+.rsvp-section { margin-top: 1rem; border-top: 1px solid rgba(255,255,255,0.07); padding-top: 1rem; }
+.rsvp-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.4); margin-bottom: 0.65rem; }
+.rsvp-btns { display: flex; gap: 0.5rem; }
+.rsvp-btn { flex: 1; padding: 0.75rem; border-radius: 12px; border: 1.5px solid; font-size: 0.85rem; font-weight: 700; cursor: pointer; transition: opacity 0.15s; }
+.rsvp-btn-coming  { background: rgba(39,174,96,0.12); color: #27ae60; border-color: rgba(39,174,96,0.35); }
+.rsvp-btn-no      { background: rgba(245,64,41,0.1);  color: #F54029; border-color: rgba(245,64,41,0.3); }
+.rsvp-btn.chosen  { opacity: 1; }
+.rsvp-btn:not(.chosen) { opacity: 0.5; }
+.rsvp-reason-form { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.rsvp-status-badge { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.78rem; font-weight: 700; padding: 0.35rem 0.75rem; border-radius: 20px; margin-bottom: 0.5rem; }
+.rsvp-status-coming { background: rgba(39,174,96,0.15); color: #27ae60; }
+.rsvp-status-no     { background: rgba(245,64,41,0.12); color: #F54029; }
+.ev-rsvp-badge { font-size: 0.6rem; font-weight: 700; padding: 0.1rem 0.4rem; border-radius: 6px; background: rgba(39,174,96,0.15); color: #27ae60; border: 1px solid rgba(39,174,96,0.3); margin-left: 4px; vertical-align: middle; }
 
 /* bot-forward hint */
 .bot-hint {
@@ -1262,7 +1276,11 @@ body {
         <input id="mgr-ev-title" class="login-input" type="text" placeholder="Название события" maxlength="80" style="margin-bottom:0.5rem;font-size:0.85rem;">
         <textarea id="mgr-ev-desc" placeholder="Описание (необязательно)" maxlength="400" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;font-size:0.82rem;padding:0.65rem 0.8rem;resize:none;height:80px;box-sizing:border-box;margin-bottom:0.5rem;font-family:inherit;outline:none;"></textarea>
         <input id="mgr-ev-date" class="login-input" type="date" style="margin-bottom:0.5rem;font-size:0.85rem;color-scheme:dark;">
-        <input id="mgr-ev-link" class="login-input" type="url" placeholder="Ссылка (необязательно)" style="margin-bottom:0.75rem;font-size:0.85rem;">
+        <input id="mgr-ev-link" class="login-input" type="url" placeholder="Ссылка (необязательно)" style="margin-bottom:0.65rem;font-size:0.85rem;">
+        <label style="display:flex;align-items:center;gap:0.55rem;margin-bottom:0.75rem;cursor:pointer;font-size:0.82rem;color:rgba(255,255,255,0.7);">
+          <input type="checkbox" id="mgr-ev-allowrsvp" style="width:18px;height:18px;accent-color:#27ae60;cursor:pointer;flex-shrink:0;">
+          Разрешить запись (сотрудники смогут отметить «Приду» / «Не приду»)
+        </label>
         <button onclick="addManagerEvent()" style="width:100%;background:#F54029;border:none;border-radius:12px;color:#fff;font-size:0.9rem;font-weight:700;padding:0.75rem;cursor:pointer;">Добавить событие</button>
         <div id="mgr-ev-status" style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.5);text-align:center;"></div>
       </div>
@@ -1797,19 +1815,21 @@ let EVENTS = [
   },
 ];
 
-// Загружаем актуальные события из Firestore поверх дефолтных
-async function loadEventsFromFirestore() {
-  try {
-    let snap;
-    try { snap = await db.collection('events').orderBy('sortKey').get(); }
-    catch(_) { snap = await db.collection('events').get(); }
+// Real-time слушатель событий — обновляет у всех пользователей мгновенно
+let _eventsUnsubscribe = null;
+function loadEventsFromFirestore() {
+  if (!db) return;
+  if (_eventsUnsubscribe) _eventsUnsubscribe();
+  // Слушаем коллекцию events, сортируем по date (есть у всех событий)
+  _eventsUnsubscribe = db.collection('events').orderBy('date').onSnapshot(snap => {
     if (!snap.empty) {
       EVENTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
-  } catch(e) { /* fallback to hardcoded */ }
-  EVENTS_CACHE = EVENTS.slice();
-  renderEventsList();
-  renderMiniEvents();
+    EVENTS_CACHE = EVENTS.slice();
+    renderEventsList();
+    renderMiniEvents();
+    renderMgrMiniEvents();
+  }, () => { /* fallback: keep hardcoded */ });
 }
 
 // loadEventsFromFirestore() вызывается ниже, после инициализации Firebase
@@ -1868,15 +1888,24 @@ function evCard(i, ev, dimmed) {
   const s = TYPE_STYLE[ev.type] || TYPE_STYLE.fun;
   const org = ev.organizers && ev.organizers.length
     ? ev.organizers.map(o => `@${o.handle}`).join(' · ')
-    : '';
+    : (ev.addedBy ? 'Добавил: ' + ev.addedBy : '');
+  // Для событий без day/mon — дерём из поля date
+  let dayStr = ev.day, monStr = ev.mon;
+  if ((!dayStr || !monStr) && ev.date) {
+    const MONTHS_SHORT = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];
+    const d = new Date(ev.date + 'T12:00:00');
+    dayStr = String(d.getDate()); monStr = MONTHS_SHORT[d.getMonth()];
+  }
+  const rsvpBadge = ev.allowRsvp
+    ? `<span class="ev-rsvp-badge">📋 запись</span>` : '';
   const regBadge = ev.sheetUrl
-    ? `<span style="font-size:0.58rem;background:rgba(245,64,41,0.15);color:#F54029;border:1px solid rgba(245,64,41,0.35);padding:0.1rem 0.4rem;border-radius:6px;font-weight:700;display:inline-block;margin-top:4px;">🔴 регистрация началась</span>`
-    : `<span style="font-size:0.58rem;background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.3);border:1px solid rgba(255,255,255,0.1);padding:0.1rem 0.4rem;border-radius:6px;font-weight:600;display:inline-block;margin-top:4px;">регистрация не началась</span>`;
+    ? `<span style="font-size:0.58rem;background:rgba(245,64,41,0.15);color:#F54029;border:1px solid rgba(245,64,41,0.35);padding:0.1rem 0.4rem;border-radius:6px;font-weight:700;display:inline-block;margin-top:4px;">🔴 регистрация</span>`
+    : '';
   return `
   <div class="ev-card" onclick="openEvModal(${i})" style="${dimmed ? 'opacity:0.45' : ''}">
-    <div class="ev-date-col"><div class="ev-day-n" style="${dimmed?'':'color:#fff'}">${ev.day}</div><div class="ev-mon-n">${ev.mon}</div></div>
+    <div class="ev-date-col"><div class="ev-day-n" style="${dimmed?'':'color:#fff'}">${dayStr||'?'}</div><div class="ev-mon-n">${monStr||''}</div></div>
     <div class="ev-body" style="flex:1">
-      <span class="ev-badge eb-t" style="background:${s.bg};color:${s.color}">${ev.label}</span>
+      <span class="ev-badge eb-t" style="background:${s.bg};color:${s.color}">${ev.label||'событие'}</span>${rsvpBadge}
       <div class="ev-ttl">${ev.title}</div>
       <div class="ev-meta">${org}</div>
       ${dimmed ? '' : regBadge}
@@ -1889,17 +1918,31 @@ function openEvModal(i) {
   const ev = EVENTS[i];
   const s = TYPE_STYLE[ev.type] || TYPE_STYLE.fun;
   const badge = document.getElementById('ev-modal-badge');
-  badge.textContent = ev.label;
+  badge.textContent = ev.label || 'событие';
   badge.style.background = s.bg;
   badge.style.color = s.color;
   document.getElementById('ev-modal-title').textContent = ev.title;
-  document.getElementById('ev-modal-date').textContent = '📅 ' + ev.date;
-  document.getElementById('ev-modal-desc').textContent = ev.desc;
+  // Форматируем дату
+  let dateDisplay = ev.date || '';
+  if (ev.sortKey) {
+    const d = new Date(ev.sortKey + 'T12:00:00');
+    const MONTHS_RU_GEN2 = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+    dateDisplay = d.getDate() + ' ' + MONTHS_RU_GEN2[d.getMonth()] + ' ' + d.getFullYear();
+  }
+  document.getElementById('ev-modal-date').textContent = '📅 ' + dateDisplay;
+  document.getElementById('ev-modal-desc').textContent = ev.desc || '';
 
   const action = document.getElementById('ev-modal-action');
   let btns = '';
 
-  // Google Sheets link (если есть)
+  // RSVP блок — только если у события есть id в Firestore и allowRsvp
+  if (ev.allowRsvp && ev.id) {
+    btns += `<div class="rsvp-section" id="rsvp-block-${ev.id}">
+      <div class="rsvp-label">Отметь своё участие</div>
+      <div style="font-size:0.75rem;color:rgba(255,255,255,0.35);margin-bottom:0.65rem;">Загрузка…</div>
+    </div>`;
+  }
+
   if (ev.sheetUrl) {
     btns += `<a class="ev-modal-link-btn" href="${ev.sheetUrl}" target="_blank" style="margin-bottom:0.5rem;background:rgba(39,174,96,0.15);color:#27ae60;border:1px solid rgba(39,174,96,0.3);">
       📊 Записаться (Google Таблица)
@@ -1912,7 +1955,6 @@ function openEvModal(i) {
       </a>`;
     });
   }
-  // channel link always
   btns += `<a class="ev-modal-link-btn" href="https://t.me/+3kLsRujJ0TljYzcy" target="_blank"
     style="background:rgba(138,180,248,0.15);color:#8ab4f8;border:1px solid rgba(138,180,248,0.25);">
     📢 Следить за анонсом в канале
@@ -1920,6 +1962,137 @@ function openEvModal(i) {
 
   action.innerHTML = `<div style="display:flex;flex-direction:column;gap:0">${btns}</div>`;
   document.getElementById('ev-modal').classList.add('open');
+
+  // Загружаем RSVP статус если нужно
+  if (ev.allowRsvp && ev.id) {
+    loadMyRsvpAndRender(ev.id);
+  }
+}
+
+async function loadMyRsvpAndRender(eventId) {
+  const block = document.getElementById('rsvp-block-' + eventId);
+  if (!block || !currentEmployee || !db) return;
+  try {
+    const doc = await db.collection('events').doc(eventId).collection('rsvps').doc(currentEmployee.id).get();
+    const rsvp = doc.exists ? doc.data() : null;
+    renderRsvpBlock(block, eventId, rsvp);
+  } catch(e) { renderRsvpBlock(block, eventId, null); }
+}
+
+function renderRsvpBlock(block, eventId, rsvp) {
+  if (!block) return;
+  let html = '<div class="rsvp-label">Отметь своё участие</div>';
+
+  if (rsvp) {
+    if (rsvp.status === 'coming') {
+      html += `<div class="rsvp-status-badge rsvp-status-coming">✅ Ты придёшь</div>`;
+      html += `<button onclick="clearRsvp('${eventId}')" style="font-size:0.72rem;background:none;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.4);border-radius:8px;padding:0.3rem 0.7rem;cursor:pointer;margin-top:0.25rem;">Изменить ответ</button>`;
+    } else {
+      html += `<div class="rsvp-status-badge rsvp-status-no">❌ Ты не придёшь</div>`;
+      if (rsvp.reason) html += `<div style="font-size:0.78rem;color:rgba(255,255,255,0.5);margin-top:0.25rem;">Причина: ${escHtml(rsvp.reason)}</div>`;
+      html += `<button onclick="clearRsvp('${eventId}')" style="font-size:0.72rem;background:none;border:1px solid rgba(255,255,255,0.12);color:rgba(255,255,255,0.4);border-radius:8px;padding:0.3rem 0.7rem;cursor:pointer;margin-top:0.5rem;">Изменить ответ</button>`;
+    }
+  } else {
+    html += `<div class="rsvp-btns">
+      <button class="rsvp-btn rsvp-btn-coming" onclick="submitRsvpComing('${eventId}')">✅ Приду</button>
+      <button class="rsvp-btn rsvp-btn-no" onclick="showRsvpNoForm('${eventId}')">❌ Не приду</button>
+    </div>
+    <div id="rsvp-no-form-${eventId}" class="rsvp-reason-form" style="display:none;">
+      <textarea id="rsvp-reason-${eventId}" placeholder="Причина (обязательно)" maxlength="300"
+        style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:#fff;font-size:0.82rem;padding:0.65rem 0.8rem;resize:none;height:80px;box-sizing:border-box;font-family:inherit;outline:none;"></textarea>
+      <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.6);cursor:pointer;">
+        <span style="flex-shrink:0;">📎 Прикрепить фото (необязательно):</span>
+      </label>
+      <input type="file" id="rsvp-photo-${eventId}" accept="image/*" style="font-size:0.78rem;color:rgba(255,255,255,0.5);">
+      <button onclick="submitRsvpNotComing('${eventId}')"
+        style="width:100%;background:#F54029;border:none;border-radius:10px;color:#fff;font-size:0.85rem;font-weight:700;padding:0.7rem;cursor:pointer;">
+        Отправить
+      </button>
+    </div>`;
+  }
+  block.innerHTML = html;
+}
+
+function showRsvpNoForm(eventId) {
+  const form = document.getElementById('rsvp-no-form-' + eventId);
+  if (form) form.style.display = 'flex';
+}
+
+async function submitRsvpComing(eventId) {
+  if (!currentEmployee || !db) return;
+  try {
+    await db.collection('events').doc(eventId).collection('rsvps').doc(currentEmployee.id).set({
+      status: 'coming',
+      name: currentEmployee.fullName || currentEmployee.name,
+      timestamp: new Date().toISOString()
+    });
+    const block = document.getElementById('rsvp-block-' + eventId);
+    renderRsvpBlock(block, eventId, { status: 'coming' });
+  } catch(e) { alert('Ошибка: ' + e.message); }
+}
+
+async function submitRsvpNotComing(eventId) {
+  if (!currentEmployee || !db) return;
+  const reason = (document.getElementById('rsvp-reason-' + eventId)?.value || '').trim();
+  if (!reason) { alert('Укажи причину'); return; }
+  const fileInput = document.getElementById('rsvp-photo-' + eventId);
+  const file = fileInput?.files?.[0];
+
+  let photoBase64 = null;
+  if (file) {
+    try {
+      photoBase64 = await resizeAndEncodePhoto(file, 800);
+    } catch(e) { /* ignore photo errors */ }
+  }
+
+  try {
+    const data = {
+      status: 'not_coming',
+      name: currentEmployee.fullName || currentEmployee.name,
+      reason,
+      timestamp: new Date().toISOString()
+    };
+    if (photoBase64) data.photoBase64 = photoBase64;
+    await db.collection('events').doc(eventId).collection('rsvps').doc(currentEmployee.id).set(data);
+    const block = document.getElementById('rsvp-block-' + eventId);
+    renderRsvpBlock(block, eventId, { status: 'not_coming', reason });
+  } catch(e) { alert('Ошибка: ' + e.message); }
+}
+
+async function clearRsvp(eventId) {
+  if (!currentEmployee || !db) return;
+  try {
+    await db.collection('events').doc(eventId).collection('rsvps').doc(currentEmployee.id).delete();
+    const block = document.getElementById('rsvp-block-' + eventId);
+    renderRsvpBlock(block, eventId, null);
+  } catch(e) {}
+}
+
+// Сжимаем фото через canvas и кодируем в base64
+function resizeAndEncodePhoto(file, maxW) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(1, maxW / img.width);
+        const w = Math.round(img.width * ratio);
+        const h = Math.round(img.height * ratio);
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function closeEvModal(e) {
@@ -3278,20 +3451,32 @@ async function renderMgrTasksTab() {
 
 // ── MANAGER EVENTS ──
 async function addManagerEvent() {
-  const title   = document.getElementById('mgr-ev-title')?.value?.trim();
-  const desc    = document.getElementById('mgr-ev-desc')?.value?.trim();
-  const date    = document.getElementById('mgr-ev-date')?.value;
-  const link    = document.getElementById('mgr-ev-link')?.value?.trim();
-  const statusEl= document.getElementById('mgr-ev-status');
+  const title      = document.getElementById('mgr-ev-title')?.value?.trim();
+  const desc       = document.getElementById('mgr-ev-desc')?.value?.trim();
+  const date       = document.getElementById('mgr-ev-date')?.value; // YYYY-MM-DD
+  const link       = document.getElementById('mgr-ev-link')?.value?.trim();
+  const allowRsvp  = document.getElementById('mgr-ev-allowrsvp')?.checked || false;
+  const statusEl   = document.getElementById('mgr-ev-status');
   if (!title || !date) { if(statusEl) statusEl.textContent = '⚠️ Укажи название и дату'; return; }
   if (!db) return;
+  // Формируем day/mon из даты для рендера карточки
+  const d = new Date(date + 'T12:00:00');
+  const MONTHS_SHORT = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];
+  const docData = {
+    title, desc: desc || '', date, sortKey: date, link: link || '',
+    day: String(d.getDate()), mon: MONTHS_SHORT[d.getMonth()],
+    type: 'corporate', label: '🏢 корп',
+    allowRsvp,
+    addedBy: currentManager?.name || '', addedAt: new Date().toISOString()
+  };
   try {
-    await db.collection('events').add({ title, desc: desc || '', date, link: link || '', addedBy: currentManager.name, addedAt: new Date().toISOString() });
+    await db.collection('events').add(docData);
     if (statusEl) statusEl.textContent = '✅ Событие добавлено';
     document.getElementById('mgr-ev-title').value = '';
     document.getElementById('mgr-ev-desc').value = '';
     document.getElementById('mgr-ev-date').value = '';
     document.getElementById('mgr-ev-link').value = '';
+    if (document.getElementById('mgr-ev-allowrsvp')) document.getElementById('mgr-ev-allowrsvp').checked = false;
     setTimeout(() => { if(statusEl) statusEl.textContent = ''; }, 3000);
     renderMgrEventsTab();
   } catch(e) { if(statusEl) statusEl.textContent = '❌ ' + e.message; }
@@ -3302,19 +3487,41 @@ async function renderMgrEventsTab() {
   const listEl = document.getElementById('mgr-events-list');
   if (!listEl) return;
   try {
-    const snap = await db.collection('events').orderBy('date').limit(20).get();
+    const snap = await db.collection('events').orderBy('date').limit(30).get();
     if (snap.empty) { listEl.innerHTML = '<div style="padding:1rem;color:rgba(255,255,255,0.4);text-align:center;font-size:0.82rem;">Нет событий</div>'; return; }
     let html = '';
-    snap.docs.forEach(doc => {
+    for (const doc of snap.docs) {
       const e = doc.data();
+      let rsvpHtml = '';
+      if (e.allowRsvp) {
+        // Грузим RSVP
+        try {
+          const rsvpSnap = await db.collection('events').doc(doc.id).collection('rsvps').get();
+          const coming = rsvpSnap.docs.filter(r => r.data().status === 'coming').length;
+          const notComing = rsvpSnap.docs.filter(r => r.data().status === 'not_coming').length;
+          const notComingList = rsvpSnap.docs.filter(r => r.data().status === 'not_coming').map(r => {
+            const d = r.data();
+            return `<div style="font-size:0.75rem;color:rgba(255,255,255,0.5);padding:0.3rem 0;border-top:1px solid rgba(255,255,255,0.05);">
+              <span style="color:#F54029;font-weight:600;">${escHtml(d.name)}</span>: ${escHtml(d.reason)}
+              ${d.photoBase64 ? `<br><img src="${d.photoBase64}" style="max-width:120px;border-radius:6px;margin-top:4px;">` : ''}
+            </div>`;
+          }).join('');
+          rsvpHtml = `<div style="margin-top:0.5rem;display:flex;gap:0.75rem;align-items:center;">
+            <span style="font-size:0.72rem;background:rgba(39,174,96,0.15);color:#27ae60;border:1px solid rgba(39,174,96,0.3);padding:0.15rem 0.45rem;border-radius:8px;font-weight:700;">✅ ${coming}</span>
+            <span style="font-size:0.72rem;background:rgba(245,64,41,0.1);color:#F54029;border:1px solid rgba(245,64,41,0.3);padding:0.15rem 0.45rem;border-radius:8px;font-weight:700;">❌ ${notComing}</span>
+          </div>
+          ${notComingList ? `<details style="margin-top:0.4rem;"><summary style="font-size:0.72rem;color:rgba(255,255,255,0.4);cursor:pointer;">Не придут (${notComing})</summary>${notComingList}</details>` : ''}`;
+        } catch(_) {}
+      }
       html += `<div style="padding:0.75rem 1rem;border-bottom:1px solid rgba(255,255,255,0.06);">
-        <div style="font-size:0.85rem;font-weight:600;color:#fff;">${e.title}</div>
+        <div style="font-size:0.85rem;font-weight:600;color:#fff;">${escHtml(e.title)}${e.allowRsvp ? ' <span style="font-size:0.65rem;background:rgba(39,174,96,0.12);color:#27ae60;border-radius:6px;padding:0.1rem 0.35rem;border:1px solid rgba(39,174,96,0.25);">запись</span>' : ''}</div>
         <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:2px;">${e.date}${e.addedBy ? ' · ' + e.addedBy : ''}</div>
-        ${e.desc ? `<div style="font-size:0.78rem;color:rgba(255,255,255,0.6);margin-top:3px;">${e.desc}</div>` : ''}
+        ${e.desc ? `<div style="font-size:0.78rem;color:rgba(255,255,255,0.6);margin-top:3px;">${escHtml(e.desc)}</div>` : ''}
+        ${rsvpHtml}
       </div>`;
-    });
+    }
     listEl.innerHTML = html;
-  } catch(e) { listEl.innerHTML = ''; }
+  } catch(e) { listEl.innerHTML = `<div style="padding:1rem;font-size:0.8rem;color:#F54029;">${e.message}</div>`; }
 }
 
 function renderMgrMiniEvents() {
