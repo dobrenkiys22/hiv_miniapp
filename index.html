@@ -878,6 +878,21 @@ body {
     </div>
     <button class="login-btn" onclick="doLogin()">Войти →</button>
     <div class="login-error" id="login-err"></div>
+    <div style="text-align:center;margin-top:1.5rem;">
+      <button onclick="toggleManagerMode()" id="mgr-mode-toggle" style="background:none;border:none;color:rgba(255,255,255,0.35);font-size:0.75rem;cursor:pointer;padding:0.5rem;">Войти как менеджер ›</button>
+    </div>
+    <div id="mgr-login-panel" style="display:none;margin-top:0.5rem;">
+      <div class="login-sub" style="margin-bottom:0.6rem;">Выбери своё имя</div>
+      <select id="mgr-select" class="login-input" style="margin-bottom:0.75rem;background:#1a1a2e;color:#fff;cursor:pointer;">
+        <option value="">— менеджер —</option>
+      </select>
+      <div style="position:relative;margin-bottom:0.75rem;">
+        <input class="login-input" id="mgr-pwd" type="password" placeholder="Пароль менеджера" autocomplete="off" maxlength="30"
+          onkeydown="if(event.key==='Enter')doManagerLogin()" style="margin-bottom:0;padding-right:3rem;">
+      </div>
+      <button class="login-btn" onclick="doManagerLogin()">Войти как менеджер →</button>
+      <div class="login-error" id="mgr-login-err"></div>
+    </div>
   </div>
 
   <!-- TELEGRAM HEADER -->
@@ -1178,6 +1193,111 @@ body {
     </div>
 
   </div><!-- /app-screen -->
+
+<!-- MANAGER APP SCREEN -->
+<div class="app-screen" id="manager-app-screen" style="display:none">
+
+  <!-- HOME TAB -->
+  <div class="tab-content" id="tab-mgr-home" style="display:block;">
+    <div class="greeting-block" style="display:flex;align-items:flex-start;justify-content:space-between;">
+      <div>
+        <div class="greeting-line" id="mgr-greeting-name">Привет! 👋</div>
+        <div class="greeting-sub" id="mgr-greeting-date"></div>
+        <div style="font-size:0.72rem;color:#F54029;margin-top:2px;font-weight:600;">МЕНЕДЖЕР</div>
+      </div>
+      <button onclick="doManagerLogout()" style="background:none;border:1px solid rgba(255,255,255,0.15);border-radius:10px;color:rgba(255,255,255,0.4);font-size:0.7rem;padding:0.35rem 0.65rem;cursor:pointer;margin-top:3px;white-space:nowrap;">Выйти</button>
+    </div>
+    <div class="section">
+      <div class="s-label">Моя следующая смена</div>
+      <div id="mgr-next-shift-container">
+        <div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">Загрузка…</div></div>
+      </div>
+    </div>
+    <div class="section" style="margin-top:1rem;">
+      <div class="s-label">Ближайшие события</div>
+      <div class="card" id="mgr-mini-events"></div>
+    </div>
+  </div>
+
+  <!-- SCHEDULE TAB -->
+  <div class="tab-content" id="tab-mgr-sched" style="display:none;">
+    <div class="greeting-block"><div class="greeting-line">Мой график</div></div>
+    <div id="mgr-sched-content"></div>
+  </div>
+
+  <!-- TASKS TAB -->
+  <div class="tab-content" id="tab-mgr-tasks" style="display:none;">
+    <div class="greeting-block"><div class="greeting-line">Задачи</div></div>
+    <div class="section">
+      <div class="s-label">Выдать задачу сотруднику</div>
+      <div class="card" style="padding:1rem;">
+        <select id="mgr-task-emp" class="login-input" style="margin-bottom:0.75rem;background:#1a1a2e;color:#fff;font-size:0.85rem;">
+          <option value="">— выбери сотрудника —</option>
+        </select>
+        <input id="mgr-task-title" class="login-input" type="text" placeholder="Название задачи" maxlength="80" style="margin-bottom:0.5rem;font-size:0.85rem;">
+        <textarea id="mgr-task-desc" placeholder="Описание (необязательно)" maxlength="300" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;font-size:0.82rem;padding:0.65rem 0.8rem;resize:none;height:80px;box-sizing:border-box;margin-bottom:0.5rem;font-family:inherit;outline:none;"></textarea>
+        <input id="mgr-task-deadline" class="login-input" type="date" style="margin-bottom:0.75rem;font-size:0.85rem;color-scheme:dark;">
+        <button onclick="assignTask()" style="width:100%;background:#F54029;border:none;border-radius:12px;color:#fff;font-size:0.9rem;font-weight:700;padding:0.75rem;cursor:pointer;">Назначить задачу</button>
+        <div id="mgr-task-status" style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.5);text-align:center;"></div>
+      </div>
+    </div>
+    <div class="section" style="margin-top:1rem;">
+      <div class="s-label">Мои выданные задачи</div>
+      <div id="mgr-tasks-list"></div>
+    </div>
+  </div>
+
+  <!-- COMPOSITION TAB -->
+  <div class="tab-content" id="tab-mgr-compose" style="display:none;">
+    <div class="greeting-block"><div class="greeting-line">Состав смены</div></div>
+    <div id="mgr-compose-content"></div>
+  </div>
+
+  <!-- EVENTS TAB -->
+  <div class="tab-content" id="tab-mgr-events" style="display:none;">
+    <div class="greeting-block"><div class="greeting-line">События</div></div>
+    <div class="section">
+      <div class="s-label">Добавить событие</div>
+      <div class="card" style="padding:1rem;">
+        <input id="mgr-ev-title" class="login-input" type="text" placeholder="Название события" maxlength="80" style="margin-bottom:0.5rem;font-size:0.85rem;">
+        <textarea id="mgr-ev-desc" placeholder="Описание (необязательно)" maxlength="400" style="width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:10px;color:#fff;font-size:0.82rem;padding:0.65rem 0.8rem;resize:none;height:80px;box-sizing:border-box;margin-bottom:0.5rem;font-family:inherit;outline:none;"></textarea>
+        <input id="mgr-ev-date" class="login-input" type="date" style="margin-bottom:0.5rem;font-size:0.85rem;color-scheme:dark;">
+        <input id="mgr-ev-link" class="login-input" type="url" placeholder="Ссылка (необязательно)" style="margin-bottom:0.75rem;font-size:0.85rem;">
+        <button onclick="addManagerEvent()" style="width:100%;background:#F54029;border:none;border-radius:12px;color:#fff;font-size:0.9rem;font-weight:700;padding:0.75rem;cursor:pointer;">Добавить событие</button>
+        <div id="mgr-ev-status" style="margin-top:0.5rem;font-size:0.8rem;color:rgba(255,255,255,0.5);text-align:center;"></div>
+      </div>
+    </div>
+    <div class="section" style="margin-top:1rem;">
+      <div class="s-label">Ближайшие события</div>
+      <div id="mgr-events-list" class="card" style="padding:0;"></div>
+    </div>
+  </div>
+
+  <!-- TAB BAR -->
+  <div class="tab-bar" id="mgr-tab-bar">
+    <button class="tb-item active" onclick="switchMgrTab('home', this)">
+      <div class="tb-icon">🏠</div>
+      <span class="tb-label">Главная</span>
+    </button>
+    <button class="tb-item" onclick="switchMgrTab('sched', this)">
+      <div class="tb-icon">📅</div>
+      <span class="tb-label">График</span>
+    </button>
+    <button class="tb-item" onclick="switchMgrTab('tasks', this)">
+      <div class="tb-icon">🎯</div>
+      <span class="tb-label">Задачи</span>
+    </button>
+    <button class="tb-item" onclick="switchMgrTab('compose', this)">
+      <div class="tb-icon">👥</div>
+      <span class="tb-label">Состав</span>
+    </button>
+    <button class="tb-item" onclick="switchMgrTab('events', this)">
+      <div class="tb-icon">🗓️</div>
+      <span class="tb-label">События</span>
+    </button>
+  </div>
+</div><!-- /manager-app-screen -->
+
 </div><!-- /phone -->
 
 <script>
@@ -1554,6 +1674,21 @@ function renderNextShiftComposition(selectedDay) {
       <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);padding:0.4rem 0 0.6rem;">${DOW_FULL2[dow]}, ${displayDay} ${month}</div>
       ${myBlock}
       <div class="s-label" style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:0.5rem;">Состав смены</div>
+      ${(() => {
+        if (typeof MANAGERS !== 'undefined' && MANAGERS.length && _swapSchedManagerData) {
+          const managersOnShift = MANAGERS.filter(m => {
+            const mDays = (_swapSchedManagerData[m.id] || {}).days || {};
+            const v = mDays[String(displayDay)];
+            return v && v !== 'В';
+          }).map(m => {
+            const mDays = (_swapSchedManagerData[m.id] || {}).days || {};
+            const mZones = (_swapSchedManagerData[m.id] || {}).zones || {};
+            return { ...m, shift: mDays[String(displayDay)] || '', zone: mZones[String(displayDay)] || '' };
+          });
+          if (managersOnShift.length) return renderManagerGroup(managersOnShift);
+        }
+        return '';
+      })()}
       ${renderGroup('Официанты', waiters)}
       ${renderGroup('Раннеры', runners)}
       ${(!waiters.length && !runners.length) ? '<div style="color:rgba(255,255,255,0.3);font-size:0.8rem;padding:0.5rem 0">Нет данных по смене</div>' : ''}
@@ -1672,6 +1807,7 @@ async function loadEventsFromFirestore() {
       EVENTS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     }
   } catch(e) { /* fallback to hardcoded */ }
+  EVENTS_CACHE = EVENTS.slice();
   renderEventsList();
   renderMiniEvents();
 }
@@ -2458,6 +2594,10 @@ const MONTHS_RU = {
 };
 
 let currentEmployee = null;
+let currentManager = null;
+const MGR_SESSION_KEY = 'hiv_mgr_session';
+let MANAGERS = []; // loaded from Firestore managers collection
+let EVENTS_CACHE = [];
 
 // Загружаем сотрудников из коллекции employees, потом восстанавливаем сессию
 async function loadEmployeesFromFirebase() {
@@ -2492,18 +2632,31 @@ async function loadEmployeesFromFirebase() {
   restoreSession();
 }
 
-function restoreSession() {
+async function restoreSession() {
   const session = getSession();
-  if (!session) return;
-  // Ищем сначала по id (Firebase doc ID), потом по pin (для обратной совместимости)
-  let employee = EMPLOYEES.find(e => e.id === session.id);
-  if (!employee && session.pin) {
-    employee = EMPLOYEES.find(e => e.password === session.pin);
+  if (session) {
+    let employee = EMPLOYEES.find(e => e.id === session.id);
+    if (!employee && session.pin) {
+      employee = EMPLOYEES.find(e => e.password === session.pin);
+    }
+    if (employee) { loginEmployee(employee); return; }
   }
-  if (employee) loginEmployee(employee);
+  // Check manager session
+  const mgrSession = getMgrSession();
+  if (mgrSession && db) {
+    try {
+      const doc = await db.collection('managers').doc(mgrSession.id).get();
+      if (doc.exists) {
+        const d = doc.data();
+        loginManager({ id: doc.id, name: d.name || doc.id, password: d.password || '', telegramId: d.telegramId || null });
+        return;
+      }
+    } catch(e) {}
+  }
 }
 
 loadEmployeesFromFirebase();
+loadManagers();
 loadEventsFromFirestore();
 
 // Рендер сетки-календаря из Firebase-данных (без горизонтального скролла)
@@ -2703,9 +2856,11 @@ async function loadAndRenderSchedule(employeeDocId) {
 
     // onSnapshot — обновление в реальном времени
     _scheduleUnsubscribe = db.collection('schedules').doc(schedId).onSnapshot(snap => {
-      const cells = snap.exists ? (snap.data().cells || {}) : {};
+      const snapData = snap.exists ? snap.data() : {};
+      const cells = snapData.cells || {};
       // Сохраняем для функции обмена сменами
       _swapSchedCells = cells;
+      _swapSchedManagerData = snapData.managers || {};
       _swapSchedId = schedId;
       _swapSchedMeta = { year, monthIdx, periodStart, periodEnd, month };
       const empData = cells[employeeDocId] || {};
@@ -2882,6 +3037,421 @@ async function markTaskDone(taskIdx) {
       `✅ <b>${emp.name} ${emp.fullName ? emp.fullName.split(' ').slice(1).join(' ') : ''}</b> отметил задание как выполненное:\n\n🎯 <b>${task.title}</b>${task.desc ? '\n' + task.desc : ''}\n\nОткрой админку → 🏅 сотрудника, чтобы подтвердить или вернуть задание.`
     );
   } catch(e) { console.error(e); }
+}
+
+// ── MANAGER SESSION ──
+function saveMgrSession(mgr) {
+  try { localStorage.setItem(MGR_SESSION_KEY, JSON.stringify({ id: mgr.id, ts: Date.now() })); } catch(e) {}
+}
+function clearMgrSession() {
+  try { localStorage.removeItem(MGR_SESSION_KEY); } catch(e) {}
+}
+function getMgrSession() {
+  try {
+    const s = JSON.parse(localStorage.getItem(MGR_SESSION_KEY) || 'null');
+    if (!s) return null;
+    if (Date.now() - s.ts > 30 * 24 * 3600 * 1000) { clearMgrSession(); return null; }
+    return s;
+  } catch(e) { return null; }
+}
+
+// ── MANAGER LOGIN UI ──
+function toggleManagerMode() {
+  const panel = document.getElementById('mgr-login-panel');
+  const btn   = document.getElementById('mgr-mode-toggle');
+  const open  = panel.style.display === 'none';
+  panel.style.display = open ? '' : 'none';
+  btn.textContent = open ? '‹ Назад' : 'Войти как менеджер ›';
+}
+
+async function loadManagers() {
+  if (!db) return;
+  try {
+    const snap = await db.collection('managers').get();
+    MANAGERS = snap.docs.map(doc => {
+      const d = doc.data();
+      return { id: doc.id, name: d.name || doc.id, password: d.password || '', telegramId: d.telegramId || null, shift: d.shift || null };
+    });
+    // Populate select
+    const sel = document.getElementById('mgr-select');
+    if (sel) {
+      sel.innerHTML = '<option value="">— менеджер —</option>';
+      MANAGERS.forEach(m => { sel.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
+    }
+  } catch(e) { console.warn('[HiV] loadManagers error:', e.message); }
+}
+
+async function doManagerLogin() {
+  const selEl = document.getElementById('mgr-select');
+  const pwdEl = document.getElementById('mgr-pwd');
+  const errEl = document.getElementById('mgr-login-err');
+  const mgrId = selEl?.value;
+  const pwd   = pwdEl?.value || '';
+  if (!mgrId) { if(errEl) errEl.textContent = 'Выбери имя менеджера'; return; }
+  if (!pwd)   { if(errEl) errEl.textContent = 'Введи пароль'; return; }
+  if (errEl) errEl.textContent = '';
+  let mgr = MANAGERS.find(m => m.id === mgrId);
+  if (!mgr && db) {
+    try {
+      const doc = await db.collection('managers').doc(mgrId).get();
+      if (doc.exists) {
+        const d = doc.data();
+        mgr = { id: doc.id, name: d.name || doc.id, password: d.password || '', telegramId: d.telegramId || null };
+      }
+    } catch(e) {}
+  }
+  if (!mgr) { if(errEl) errEl.textContent = 'Менеджер не найден'; return; }
+  if (mgr.password !== pwd) { if(errEl) errEl.textContent = 'Неверный пароль'; return; }
+  loginManager(mgr);
+}
+
+function loginManager(mgr) {
+  currentManager = mgr;
+  saveMgrSession(mgr);
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display = 'none';
+  document.getElementById('manager-app-screen').style.display = '';
+  const greet = document.getElementById('mgr-greeting-name');
+  if (greet) greet.textContent = 'Привет, ' + mgr.name + ' 👋';
+  const now = new Date();
+  const dateEl = document.getElementById('mgr-greeting-date');
+  if (dateEl) dateEl.textContent = DAYS_RU[now.getDay()] + ', ' + now.getDate() + ' ' + MONTHS_RU_GEN[now.getMonth()];
+  try { loadMgrSchedule(); } catch(e) {}
+  try { renderMgrTasksTab(); } catch(e) {}
+  try { renderMgrEventsTab(); } catch(e) {}
+  try { renderMgrMiniEvents(); } catch(e) {}
+  try {
+    const sel = document.getElementById('mgr-task-emp');
+    if (sel && EMPLOYEES.length) {
+      sel.innerHTML = '<option value="">— выбери сотрудника —</option>';
+      [...EMPLOYEES].sort((a,b) => (a.fullName||a.name).localeCompare(b.fullName||b.name,'ru'))
+        .forEach(e => { sel.innerHTML += `<option value="${e.id}">${e.fullName || e.name}</option>`; });
+    }
+  } catch(e) {}
+}
+
+function doManagerLogout() {
+  currentManager = null;
+  clearMgrSession();
+  document.getElementById('manager-app-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = '';
+  const panel = document.getElementById('mgr-login-panel');
+  if (panel) panel.style.display = 'none';
+  const btn = document.getElementById('mgr-mode-toggle');
+  if (btn) btn.textContent = 'Войти как менеджер ›';
+  const pwd = document.getElementById('mgr-pwd');
+  if (pwd) pwd.value = '';
+}
+
+// ── MANAGER TAB SWITCHING ──
+function switchMgrTab(name, btn) {
+  document.querySelectorAll('#manager-app-screen .tab-content').forEach(t => t.style.display = 'none');
+  const target = document.getElementById('tab-mgr-' + name);
+  if (target) target.style.display = 'block';
+  document.querySelectorAll('#mgr-tab-bar .tb-item').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (name === 'compose') renderMgrCompose();
+}
+
+// ── MANAGER SCHEDULE ──
+async function loadMgrSchedule() {
+  if (!db || !currentManager) return;
+  const cont = document.getElementById('mgr-sched-content');
+  const nextShiftCont = document.getElementById('mgr-next-shift-container');
+  try {
+    const cfgDoc = await db.collection('config').doc('main').get();
+    const cfg = cfgDoc.data() || {};
+    const { month, year, periodStart, periodEnd } = cfg;
+    if (!month) return;
+    const monthIdx = MONTHS_RU[month];
+    if (monthIdx === undefined) return;
+    const schedId = year + '_' + String(monthIdx + 1).padStart(2,'0');
+    const schedDoc = await db.collection('schedules').doc(schedId).get();
+    if (!schedDoc.exists) return;
+    const data = schedDoc.data();
+    const mgrData = (data.managers || {})[currentManager.id];
+    if (!mgrData) {
+      if (cont) cont.innerHTML = '<div class="card" style="padding:1rem;color:rgba(255,255,255,0.4);text-align:center;">График не составлен</div>';
+      return;
+    }
+    const days  = mgrData.days  || {};
+    const zones = mgrData.zones || {};
+    if (cont) {
+      cont.innerHTML = `<div class="section"><div class="s-label">${month} ${year} (${periodStart}–${periodEnd})</div><div id="mgr-strip" class="day-grid"></div></div>`;
+      const dowFn = (d) => { const dt = new Date(year, monthIdx, d); return DOW[dt.getDay()]; };
+      renderMyStripFirebase('mgr-strip', days, zones, dowFn, periodStart, periodEnd);
+    }
+    if (nextShiftCont) {
+      const today = new Date().getDate();
+      const todayMonth = new Date().getMonth();
+      const isSameMonth = todayMonth === monthIdx;
+      let nextDay = null;
+      for (let d = isSameMonth ? Math.max(today, periodStart) : periodStart; d <= periodEnd; d++) {
+        if (days[String(d)] && days[String(d)] !== 'В') { nextDay = d; break; }
+      }
+      if (nextDay) {
+        const shift = days[String(nextDay)];
+        const zone  = zones[String(nextDay)] || '';
+        const dt    = new Date(year, monthIdx, nextDay);
+        const dow   = DOW[dt.getDay()];
+        const zoneBadge = zone ? `<span style="font-size:0.72rem;padding:0.2rem 0.5rem;border-radius:6px;background:rgba(245,168,62,0.2);color:#f5a83e;margin-left:0.5rem;">${zone}</span>` : '';
+        nextShiftCont.innerHTML = `<div class="shift-card"><div class="sc-label">${dow}, ${nextDay} ${month}</div><div class="sc-shift">${shift}${zoneBadge}</div></div>`;
+      } else {
+        nextShiftCont.innerHTML = `<div class="shift-card"><div class="sc-label" style="color:rgba(255,255,255,0.4);">Смен нет</div></div>`;
+      }
+    }
+  } catch(e) { console.warn('[HiV] loadMgrSchedule error:', e.message); }
+}
+
+// ── MANAGER TASKS ──
+async function assignTask() {
+  const empId   = document.getElementById('mgr-task-emp')?.value;
+  const title   = document.getElementById('mgr-task-title')?.value?.trim();
+  const desc    = document.getElementById('mgr-task-desc')?.value?.trim();
+  const deadline= document.getElementById('mgr-task-deadline')?.value;
+  const statusEl= document.getElementById('mgr-task-status');
+  if (!empId || !title) { if(statusEl) statusEl.textContent = '⚠️ Выбери сотрудника и введи название'; return; }
+  if (!db || !currentManager) return;
+  try {
+    const now = new Date();
+    const dateStr = now.getDate() + ' ' + MONTHS_ACH[now.getMonth()] + ' ' + now.getFullYear();
+    const task = { title, desc: desc || '', deadline: deadline || '', assignedBy: currentManager.name, assignedAt: dateStr, status: 'active' };
+    const empDoc = await db.collection('employees').doc(empId).get();
+    const existing = empDoc.exists ? (empDoc.data().tasks || []) : [];
+    await db.collection('employees').doc(empId).update({ tasks: [...existing, task] });
+    if (statusEl) statusEl.textContent = '✅ Задача назначена';
+    document.getElementById('mgr-task-title').value = '';
+    document.getElementById('mgr-task-desc').value = '';
+    document.getElementById('mgr-task-deadline').value = '';
+    document.getElementById('mgr-task-emp').value = '';
+    setTimeout(() => { if(statusEl) statusEl.textContent = ''; }, 3000);
+    renderMgrTasksTab();
+  } catch(e) {
+    if (statusEl) statusEl.textContent = '❌ Ошибка: ' + e.message;
+  }
+}
+
+async function renderMgrTasksTab() {
+  if (!db || !currentManager) return;
+  const listEl = document.getElementById('mgr-tasks-list');
+  if (!listEl) return;
+  try {
+    const snap = await db.collection('employees').get();
+    const rows = [];
+    snap.docs.forEach(doc => {
+      const emp = doc.data();
+      const tasks = emp.tasks || [];
+      tasks.forEach((t, i) => {
+        if (t.assignedBy === currentManager.name) {
+          rows.push({ empName: emp.name || doc.id, empId: doc.id, taskIdx: i, ...t });
+        }
+      });
+    });
+    if (!rows.length) {
+      listEl.innerHTML = '<div class="card" style="padding:1rem;color:rgba(255,255,255,0.4);text-align:center;">Нет выданных задач</div>';
+      return;
+    }
+    let html = '<div class="card" style="padding:0 0.2rem;">';
+    rows.forEach(r => {
+      const done = !!r.doneAt;
+      const pending = !done && r.status === 'pending';
+      const icon = done ? '✅' : pending ? '⏳' : '🎯';
+      const statusText = done ? `<span style="color:#4caf7d;font-size:0.72rem;">Выполнено ${r.doneAt}</span>`
+                       : pending ? `<span style="color:#f5c842;font-size:0.72rem;">Ждёт подтверждения</span>`
+                       : `<span style="color:rgba(255,255,255,0.4);font-size:0.72rem;">Активно</span>`;
+      html += `<div style="display:flex;gap:0.7rem;padding:0.75rem 0.8rem;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:1.2rem;flex-shrink:0;">${icon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:0.85rem;font-weight:600;color:#fff;">${r.empName}</div>
+          <div style="font-size:0.8rem;color:rgba(255,255,255,0.7);margin-top:1px;">${r.title}</div>
+          ${r.deadline ? `<div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-top:2px;">до ${r.deadline}</div>` : ''}
+          <div style="margin-top:3px;">${statusText}</div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+    listEl.innerHTML = html;
+  } catch(e) { listEl.innerHTML = '<div class="card" style="padding:1rem;color:rgba(255,255,255,0.4);">Ошибка загрузки</div>'; }
+}
+
+// ── MANAGER EVENTS ──
+async function addManagerEvent() {
+  const title   = document.getElementById('mgr-ev-title')?.value?.trim();
+  const desc    = document.getElementById('mgr-ev-desc')?.value?.trim();
+  const date    = document.getElementById('mgr-ev-date')?.value;
+  const link    = document.getElementById('mgr-ev-link')?.value?.trim();
+  const statusEl= document.getElementById('mgr-ev-status');
+  if (!title || !date) { if(statusEl) statusEl.textContent = '⚠️ Укажи название и дату'; return; }
+  if (!db) return;
+  try {
+    await db.collection('events').add({ title, desc: desc || '', date, link: link || '', addedBy: currentManager.name, addedAt: new Date().toISOString() });
+    if (statusEl) statusEl.textContent = '✅ Событие добавлено';
+    document.getElementById('mgr-ev-title').value = '';
+    document.getElementById('mgr-ev-desc').value = '';
+    document.getElementById('mgr-ev-date').value = '';
+    document.getElementById('mgr-ev-link').value = '';
+    setTimeout(() => { if(statusEl) statusEl.textContent = ''; }, 3000);
+    renderMgrEventsTab();
+  } catch(e) { if(statusEl) statusEl.textContent = '❌ ' + e.message; }
+}
+
+async function renderMgrEventsTab() {
+  if (!db) return;
+  const listEl = document.getElementById('mgr-events-list');
+  if (!listEl) return;
+  try {
+    const snap = await db.collection('events').orderBy('date').limit(20).get();
+    if (snap.empty) { listEl.innerHTML = '<div style="padding:1rem;color:rgba(255,255,255,0.4);text-align:center;font-size:0.82rem;">Нет событий</div>'; return; }
+    let html = '';
+    snap.docs.forEach(doc => {
+      const e = doc.data();
+      html += `<div style="padding:0.75rem 1rem;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <div style="font-size:0.85rem;font-weight:600;color:#fff;">${e.title}</div>
+        <div style="font-size:0.75rem;color:rgba(255,255,255,0.4);margin-top:2px;">${e.date}${e.addedBy ? ' · ' + e.addedBy : ''}</div>
+        ${e.desc ? `<div style="font-size:0.78rem;color:rgba(255,255,255,0.6);margin-top:3px;">${e.desc}</div>` : ''}
+      </div>`;
+    });
+    listEl.innerHTML = html;
+  } catch(e) { listEl.innerHTML = ''; }
+}
+
+function renderMgrMiniEvents() {
+  const el = document.getElementById('mgr-mini-events');
+  if (!el) return;
+  if (EVENTS_CACHE.length) {
+    const today = new Date(); today.setHours(0,0,0,0);
+    const todayStr = today.toISOString().slice(0,10);
+    const upcoming = EVENTS_CACHE.filter(ev => {
+      if (ev.sortKey) return ev.sortKey >= todayStr;
+      return !ev._isPast && !ev.past;
+    }).slice(0,3);
+    if (!upcoming.length) { el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Нет событий</div>'; return; }
+    el.innerHTML = upcoming.map(ev => `<div style="padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="font-size:0.82rem;font-weight:600;">${ev.title}</div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${ev.date || ev.sortKey || ''}</div>
+    </div>`).join('');
+  } else {
+    el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Загрузка…</div>';
+  }
+}
+
+// ── MANAGER SHIFT COMPOSITION ──
+async function renderMgrCompose() {
+  const cont = document.getElementById('mgr-compose-content');
+  if (!cont) return;
+  if (!_swapSchedCells || !_swapSchedMeta) {
+    cont.innerHTML = '<div style="color:rgba(255,255,255,0.4);padding:1rem;text-align:center;">Загрузка расписания…</div>';
+    return;
+  }
+  // Build composition HTML similar to renderNextShiftComposition but render into cont
+  const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
+  const now = new Date();
+  const today = now.getDate();
+  const workDays = [];
+  for (let d = periodStart; d <= periodEnd; d++) {
+    let hasWorkers = false;
+    for (const empId in _swapSchedCells) {
+      const s = (_swapSchedCells[empId].days || {})[d];
+      if (s && s !== 'off') { hasWorkers = true; break; }
+    }
+    if (hasWorkers) workDays.push(d);
+  }
+  const displayDay = _selectedCompositionDay || workDays.find(d => d >= today) || workDays[0];
+  if (!displayDay) {
+    cont.innerHTML = '<div style="color:rgba(255,255,255,0.4);padding:1rem;text-align:center;">Нет смен в этом периоде</div>';
+    return;
+  }
+  const DOW_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  let pickerHtml = `<div style="overflow-x:auto;padding:0.6rem 0.8rem 0.2rem;display:flex;gap:0.4rem;scrollbar-width:none;">`;
+  for (const d of workDays) {
+    const dow = new Date(year, monthIdx, d).getDay();
+    const isSelected = d === displayDay;
+    const isToday = d === today;
+    const bg = isSelected ? '#F54029' : 'rgba(245,64,41,0.12)';
+    const color = isSelected ? '#fff' : 'rgba(230,80,60,0.85)';
+    const border = isToday && !isSelected ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(245,64,41,0.2)';
+    pickerHtml += `<button onclick="_mgrComposePick(${d})" style="flex-shrink:0;background:${bg};color:${color};border:${border};border-radius:8px;padding:0.3rem 0.5rem;font-size:0.7rem;cursor:pointer;min-width:36px;text-align:center;font-family:inherit;line-height:1.2;">
+      <div style="font-weight:700">${d}</div>
+      <div style="opacity:0.8;font-size:0.6rem">${DOW_SHORT[dow]}</div>
+    </button>`;
+  }
+  pickerHtml += `</div>`;
+  const ZONE_COLORS_MAP2 = { 'бар':'#4caf7d','лифт':'#8ab4f8','печка':'#f5a83e','мангал':'#F54029' };
+  function zoneKey2(z){ return z ? z.toLowerCase().trim() : ''; }
+  const waiters = [], runners = [];
+  EMPLOYEES.forEach(emp => {
+    const empData = _swapSchedCells[emp.id] || {};
+    const shift = (empData.days || {})[displayDay] || '';
+    if (!shift || shift === 'off') return;
+    const zone = (empData.zones || {})[displayDay] || null;
+    const role = empGroup(emp);
+    const zk = zoneKey2(zone);
+    const zColor = ZONE_COLORS_MAP2[zk] || '';
+    const entry = { emp, shift, zone, zColor };
+    if (role === 'runner') runners.push(entry);
+    else waiters.push(entry);
+  });
+  function renderGrp(label, list) {
+    if (!list.length) return '';
+    let h = `<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,0.35);padding:0.75rem 0 0.3rem;">${label}</div>`;
+    list.forEach(({emp, shift, zone, zColor}) => {
+      const zoneBadge = zone ? `<span style="font-size:0.65rem;color:${zColor||'rgba(255,255,255,0.5)'};font-weight:600">${zone}</span>` : '';
+      const nameColor = zColor ? zColor : 'rgba(255,255,255,0.9)';
+      h += `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.28rem 0.5rem;margin-bottom:0.15rem;background:rgba(255,255,255,0.04);border-radius:8px;">
+        <span style="color:${nameColor};font-size:0.8rem;font-weight:600;min-width:60px">${emp.name}</span>
+        <span style="color:rgba(255,255,255,0.35);font-size:0.7rem">${shift}</span>
+        ${zoneBadge}
+      </div>`;
+    });
+    return h;
+  }
+  // Managers on shift
+  let mgrBlock = '';
+  if (MANAGERS.length && _swapSchedManagerData) {
+    const managersOnShift = MANAGERS.filter(m => {
+      const mDays = (_swapSchedManagerData[m.id] || {}).days || {};
+      const v = mDays[String(displayDay)];
+      return v && v !== 'В';
+    }).map(m => {
+      const mDays = (_swapSchedManagerData[m.id] || {}).days || {};
+      const mZones = (_swapSchedManagerData[m.id] || {}).zones || {};
+      return { ...m, shift: mDays[String(displayDay)] || '', zone: mZones[String(displayDay)] || '' };
+    });
+    if (managersOnShift.length) {
+      mgrBlock = renderManagerGroup(managersOnShift);
+    }
+  }
+  const DOW_FULL2 = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+  const dow = new Date(year, monthIdx, displayDay).getDay();
+  const body = `<div style="padding:0 0.8rem 1rem;">
+    <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);padding:0.4rem 0 0.6rem;">${DOW_FULL2[dow]}, ${displayDay} ${month}</div>
+    <div class="s-label" style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:0.5rem;">Состав смены</div>
+    ${mgrBlock}
+    ${renderGrp('Официанты', waiters)}
+    ${renderGrp('Раннеры', runners)}
+    ${(!waiters.length && !runners.length && !mgrBlock) ? '<div style="color:rgba(255,255,255,0.3);font-size:0.8rem;padding:0.5rem 0">Нет данных по смене</div>' : ''}
+  </div>`;
+  cont.innerHTML = pickerHtml + body;
+}
+
+function _mgrComposePick(day) {
+  _selectedCompositionDay = day;
+  renderMgrCompose();
+}
+
+function renderManagerGroup(managers) {
+  let h = `<div style="margin-bottom:1.2rem;">
+    <div style="font-size:0.65rem;font-weight:700;letter-spacing:0.08em;color:#F54029;text-transform:uppercase;margin-bottom:0.6rem;padding-left:0.2rem;">Менеджеры</div>`;
+  managers.forEach(m => {
+    const zoneBadge = m.zone ? `<span style="font-size:0.65rem;padding:0.15rem 0.4rem;border-radius:5px;background:rgba(245,168,62,0.2);color:#f5a83e;margin-left:0.3rem;">${m.zone}</span>` : '';
+    h += `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+      <span style="font-size:0.85rem;font-weight:700;color:#fff;min-width:70px;">${m.name}</span>
+      <span style="font-size:0.75rem;color:rgba(255,255,255,0.5);">${m.shift}</span>
+      ${zoneBadge}
+    </div>`;
+  });
+  h += '</div>';
+  return h;
 }
 
 function loginEmployee(employee) {
@@ -3278,6 +3848,7 @@ async function submitWishes() {
 
 let _swapSchedId = null;
 let _swapSchedCells = null;
+let _swapSchedManagerData = {};
 let _swapSchedMeta = null;
 let _selectedCompositionDay = null; // for Состав смены day picker
 let _swapDay = null;
