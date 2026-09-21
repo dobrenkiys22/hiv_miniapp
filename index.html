@@ -1815,6 +1815,16 @@ let EVENTS = [
   },
 ];
 
+// Форматирует дату события для отображения
+function fmtEvDate(ev) {
+  if (ev.day && ev.mon) return ev.day + ' ' + ev.mon;
+  const dateStr = ev.sortKey || ev.date;
+  if (!dateStr) return ev.date || '';
+  const d = new Date(dateStr + 'T12:00:00');
+  const MONTHS_SHORT = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];
+  return d.getDate() + ' ' + MONTHS_SHORT[d.getMonth()];
+}
+
 // Real-time слушатель событий — обновляет у всех пользователей мгновенно
 let _eventsUnsubscribe = null;
 function loadEventsFromFirestore() {
@@ -2974,7 +2984,7 @@ function renderMiniEvents() {
       <div class="me-dot" style="background:${dotColors[ev.type]||'#8ab4f8'};"></div>
       <div class="me-text">
         <div class="me-title">${ev.title}${regBadge}</div>
-        <div class="me-when">${ev.day} ${ev.mon} · ${ev.label||''}</div>
+        <div class="me-when">${fmtEvDate(ev)} · ${ev.label||''}</div>
       </div>
       <div class="me-arrow">›</div>
     </div>`;
@@ -3338,7 +3348,7 @@ async function loadMgrSchedule() {
     const cfg = cfgDoc.data() || {};
     const { month, year, periodStart, periodEnd } = cfg;
     if (!month) return;
-    const monthIdx = MONTHS_RU[month];
+    const monthIdx = MONTHS_RU[(month || '').toLowerCase()]; // исправлен регистр
     if (monthIdx === undefined) return;
     const schedId = year + '_' + String(monthIdx + 1).padStart(2,'0');
     const schedDoc = await db.collection('schedules').doc(schedId).get();
@@ -3537,7 +3547,7 @@ function renderMgrMiniEvents() {
     if (!upcoming.length) { el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Нет событий</div>'; return; }
     el.innerHTML = upcoming.map(ev => `<div style="padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
       <div style="font-size:0.82rem;font-weight:600;">${ev.title}</div>
-      <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${ev.date || ev.sortKey || ''}</div>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${fmtEvDate(ev)}</div>
     </div>`).join('');
   } else {
     el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Загрузка…</div>';

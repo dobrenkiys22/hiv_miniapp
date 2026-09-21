@@ -1972,15 +1972,20 @@ function renderSchedGrid() {
       const ms = mgrSchedData[mgr.id] || { days:{}, zones:{} };
       h += '<tr>';
       h += `<td class="td-name" style="font-weight:700;">${mgr.name}</td>`;
+      const mgrVacSet = new Set(mgr.vacationDays || []);
       days.forEach(({d, wknd}) => {
-        const shift = ms.days?.[d] || '';
-        const zone  = ms.zones?.[d] || '';
+        const isVac = mgrVacSet.has(d);
+        const shift = isVac ? 'В' : (ms.days?.[d] || '');
+        const zone  = isVac ? '' : (ms.zones?.[d] || '');
         const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
         const zClr  = zone ? ZONE_CLR[zone] : '';
-        h += `<td class="cell ${shCls}${wknd?' col-wknd':''}" style="position:relative"
+        const vacCls = isVac ? ' cell-vacation' : '';
+        h += `<td class="cell ${shCls}${wknd?' col-wknd':''}${vacCls}" style="position:relative"
           data-empid="${mgr.id}" data-day="${d}" data-shift="${shift}" data-zone="${zone}"
           data-dept="manager" onclick="openPopup(this,event)">`;
-        if (shift) {
+        if (isVac) {
+          h += `<span class="cell-s">В</span><span class="cell-vac-s">отп.</span>`;
+        } else if (shift) {
           h += `<span class="cell-s">${shift}</span>`;
           if (zone) h += `<span class="cell-z" style="color:${zClr}">${zone}</span>`;
         }
@@ -2968,21 +2973,52 @@ function renderVacations() {
   const totalVac = employees.filter(emp =>
     (emp.vacationDays||[]).some(d => d >= s && d <= e)
   ).length;
+  const mgrVac = managers.filter(m => (m.vacationDays||[]).some(d => d >= s && d <= e)).length;
   let html = `
     <div class="vac-summary">
       <div class="vac-summary-text">
-        В отпуске в период <b>${s}–${e} ${month}</b>: <b>${totalVac}</b> чел.&nbsp;
+        В отпуске в период <b>${s}–${e} ${month}</b>: <b>${totalVac + mgrVac}</b> чел.&nbsp;
         <span style="font-size:0.7rem;color:var(--t-ghost)">Введите диапазон (17-30) или числа через запятую, затем ✓</span>
       </div>
-      <button class="btn-xs red" onclick="clearAllVacations()">Сбросить всё</button>
+      <button class="btn-xs red" onclick="clearAllVacations()">Сбросить всё (сотрудники)</button>
     </div>`;
+
+  // ── Менеджеры ──
+  if (managers.length) {
+    html += `<div class="vac-section"><div class="vac-section-title" style="color:#F54029;">— Менеджеры</div>`;
+    managers.forEach(mgr => {
+      const allVac = (mgr.vacationDays || []).sort((a,b)=>a-b);
+      const periodVac = allVac.filter(d => d >= s && d <= e);
+      const chips = periodVac.length
+        ? groupToRanges(periodVac).map(r => {
+            const from = r[0], to = r[r.length-1];
+            const dw1 = WNDS[new Date(year, mn-1, from).getDay()];
+            const dw2 = WNDS[new Date(year, mn-1, to).getDay()];
+            const lbl = r.length === 1 ? `${from} ${dw1}` : `${from} ${dw1}–${to} ${dw2}`;
+            return `<span class="vac-chip" style="background:rgba(245,64,41,0.12);color:#F54029;border-color:rgba(245,64,41,0.3);">${lbl}</span>`;
+          }).join('')
+        : '<span class="vac-none">нет</span>';
+      const curVal = vacRangeStr(periodVac);
+      html += `<div class="vac-row">
+        <div class="vac-name" style="font-weight:700;">${mgr.name}</div>
+        <div class="vac-days">${chips}</div>
+        <div class="vac-edit-row">
+          <input class="vac-input" id="mvi-${mgr.id}" value="${curVal}" placeholder="напр. 17-30"
+            onkeydown="if(event.key==='Enter') saveMgrVacInline('${mgr.id}')">
+          <button class="vac-save" onclick="saveMgrVacInline('${mgr.id}')" title="Сохранить">✓</button>
+          ${periodVac.length ? `<button class="vac-clr" onclick="clearMgrVacInline('${mgr.id}')" title="Убрать отпуск">✕</button>` : ''}
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
   groups.forEach(({ label, filter }) => {
     const grpEmps = employees.filter(filter);
     if (!grpEmps.length) return;
     html += `<div class="vac-section"><div class="vac-section-title">${label}</div>`;
     grpEmps.forEach(emp => {
       const allVac = (emp.vacationDays || []).sort((a,b)=>a-b);
-      // Only show days within current period for chips
       const periodVac = allVac.filter(d => d >= s && d <= e);
       const chips = periodVac.length
         ? groupToRanges(periodVac).map(r => {
@@ -3008,6 +3044,30 @@ function renderVacations() {
     html += '</div>';
   });
   body.innerHTML = html;
+}
+async function saveMgrVacInline(id) {
+  const mgr = managers.find(m => m.id === id);
+  if (!mgr) return;
+  const inp = document.getElementById('mvi-' + id)?.value || '';
+  const days = parseVacInput(inp);
+  try {
+    await db.collection('managers').doc(id).update({ vacationDays: days });
+    mgr.vacationDays = days;
+    renderVacations();
+    renderSchedGrid();
+    toast(days.length ? `${mgr.name.split(' ')[0]}: отпуск ${days.join(', ')}` : `${mgr.name.split(' ')[0]}: отпуск снят`);
+  } catch(e) { toast('Ошибка: ' + e.message); }
+}
+async function clearMgrVacInline(id) {
+  const mgr = managers.find(m => m.id === id);
+  if (!mgr) return;
+  try {
+    await db.collection('managers').doc(id).update({ vacationDays: [] });
+    mgr.vacationDays = [];
+    renderVacations();
+    renderSchedGrid();
+    toast(`${mgr.name.split(' ')[0]}: отпуск снят`);
+  } catch(e) { toast('Ошибка'); }
 }
 async function saveVacInline(id) {
   const emp = employees.find(e => e.id === id);
