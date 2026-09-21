@@ -1399,104 +1399,135 @@ function renderFullTable() {
 }
 
 // ── СОСТАВ СЛЕДУЮЩЕЙ СМЕНЫ ──
-function renderNextShiftComposition() {
+function renderNextShiftComposition(selectedDay) {
   const el = document.getElementById('sub-next');
   if (!el) return;
   if (!currentEmployee || !_swapSchedCells || !_swapSchedMeta) {
-    el.innerHTML = `<div style="padding:2rem 1rem;text-align:center;color:rgba(255,255,255,0.3);font-size:0.82rem;">Расписание загружается…</div>`;
+    el.innerHTML = '<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.4)">Загрузка…</div>';
     return;
   }
+
   const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
   const myEmpData = _swapSchedCells[currentEmployee.id] || {};
   const myDays  = myEmpData.days  || {};
   const myZones = myEmpData.zones || {};
 
-  // Ищем следующую рабочую смену
-  const today = new Date().getDate();
-  let nextDay = null; let myShiftVal = null;
+  const now = new Date();
+  const today = now.getDate();
+
+  // Find next working day (auto)
+  let autoNextDay = null;
   for (let d = Math.max(today, periodStart); d <= periodEnd; d++) {
     const v = myDays[d];
-    if (v && v !== 'off') { nextDay = d; myShiftVal = v; break; }
+    if (v && v !== 'off') { autoNextDay = d; break; }
   }
-  if (!nextDay) {
-    el.innerHTML = `<div style="padding:2rem 1rem;text-align:center;color:rgba(255,255,255,0.3);font-size:0.82rem;">Смен в текущем периоде нет</div>`;
+
+  // Collect all days that have at least 1 worker
+  const workDays = [];
+  for (let d = periodStart; d <= periodEnd; d++) {
+    let hasWorkers = false;
+    for (const empId in _swapSchedCells) {
+      const s = (_swapSchedCells[empId].days || {})[d];
+      if (s && s !== 'off') { hasWorkers = true; break; }
+    }
+    if (hasWorkers) workDays.push(d);
+  }
+
+  // Determine which day to display
+  const displayDay = selectedDay || _selectedCompositionDay || autoNextDay || (workDays[0] ?? null);
+  _selectedCompositionDay = displayDay;
+
+  if (!displayDay) {
+    el.innerHTML = '<div style="padding:2rem;text-align:center;color:rgba(255,255,255,0.4)">Нет смен в этом периоде</div>';
     return;
   }
 
-  // Все коллеги в эту смену — группируем по роли + смене
-  const SHIFT_ORDER = ['У','Д12','В15','В16','В18','В'];
-  const byShiftRole = {}; // { shift: { pro:[{name,zone}], waiter:[...], runner:[...] } }
+  const DOW_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  const ZONE_COLORS_MAP2 = { 'бар':'#4caf7d','лифт':'#8ab4f8','печка':'#f5a83e','мангал':'#F54029' };
+  function zoneKey2(z){ return z ? z.toLowerCase().trim() : ''; }
+
+  // Day picker row
+  let pickerHtml = `<div style="overflow-x:auto;padding:0.6rem 0.8rem 0.2rem;display:flex;gap:0.4rem;scrollbar-width:none;">`;
+  for (const d of workDays) {
+    const dow = new Date(year, monthIdx, d).getDay();
+    const isSelected = d === displayDay;
+    const isToday = d === today;
+    const myShift = myDays[d];
+    const hasMine = myShift && myShift !== 'off';
+    const bg = isSelected ? '#F54029' : hasMine ? 'rgba(245,64,41,0.2)' : 'rgba(255,255,255,0.07)';
+    const color = isSelected ? '#fff' : hasMine ? '#F54029' : 'rgba(255,255,255,0.6)';
+    const border = isToday && !isSelected ? '1px solid rgba(255,255,255,0.3)' : '1px solid transparent';
+    pickerHtml += `<button onclick="renderNextShiftComposition(${d})" style="flex-shrink:0;background:${bg};color:${color};border:${border};border-radius:8px;padding:0.3rem 0.5rem;font-size:0.7rem;cursor:pointer;min-width:36px;text-align:center;font-family:inherit;line-height:1.2;">
+      <div style="font-weight:700">${d}</div>
+      <div style="opacity:0.8;font-size:0.6rem">${DOW_SHORT[dow]}</div>
+    </button>`;
+  }
+  pickerHtml += `</div>`;
+
+  // My shift for this day
+  const myShiftVal = myDays[displayDay] || 'off';
+  const myZone = myZones[displayDay] || null;
+  const isMyOff = !myShiftVal || myShiftVal === 'off';
+
+  // Gather coworkers
+  const waiters = [], runners = [];
   EMPLOYEES.forEach(emp => {
     if (emp.id === currentEmployee.id) return;
     const empData = _swapSchedCells[emp.id] || {};
-    const shift = (empData.days || {})[nextDay] || '';
+    const shift = (empData.days || {})[displayDay] || '';
     if (!shift || shift === 'off') return;
-    const zone = (empData.zones || {})[nextDay] || null;
-    const g = empGroup(emp);
-    if (!byShiftRole[shift]) byShiftRole[shift] = { pro:[], waiter:[], runner:[] };
-    byShiftRole[shift][g].push({ name: emp.name, zone });
+    const zone = (empData.zones || {})[displayDay] || null;
+    const role = empGroup(emp);
+    const zk = zoneKey2(zone);
+    const zColor = ZONE_COLORS_MAP2[zk] || '';
+    const nameStyle = zColor ? `color:${zColor};font-weight:600` : '';
+    const entry = { emp, shift, zone, nameStyle, zColor };
+    if (role === 'runner') runners.push(entry);
+    else waiters.push(entry);
   });
 
-  // Собираем по ролям: официанты (pro+waiter), раннеры (runner)
-  const roleEmps = { official: [], runner: [] };
-  Object.keys(byShiftRole).sort((a,b) => {
-    const ai = SHIFT_ORDER.indexOf(a), bi = SHIFT_ORDER.indexOf(b);
-    return (ai<0?99:ai) - (bi<0?99:bi);
-  }).forEach(shift => {
-    const g = byShiftRole[shift];
-    [...g.pro, ...g.waiter].forEach(e => roleEmps.official.push({ ...e, shift }));
-    g.runner.forEach(e => roleEmps.runner.push({ ...e, shift }));
-  });
-
-  // Спан имени с цветом зоны
-  function nameSpan(e) {
-    const zk = zoneKey(e.zone);
-    const color = zk ? (ZONE_COLORS_MAP[zk] || 'rgba(255,255,255,0.82)') : 'rgba(255,255,255,0.82)';
-    return `<span style="color:${color};font-weight:${zk?'700':'400'}">${e.name}</span>`;
-  }
-  // Рендер секции роли
-  function renderRoleSection(label, emps) {
-    if (!emps.length) return '';
-    let h = `<div class="nsc-role-header">${label}</div>`;
-    // Группируем по смене
-    const byShift = {};
-    emps.forEach(e => { if (!byShift[e.shift]) byShift[e.shift]=[]; byShift[e.shift].push(e); });
-    Object.keys(byShift).sort((a,b) => {
-      const ai = SHIFT_ORDER.indexOf(a), bi = SHIFT_ORDER.indexOf(b);
-      return (ai<0?99:ai) - (bi<0?99:bi);
-    }).forEach(shift => {
-      const names = byShift[shift].map(nameSpan).join('<span style="color:rgba(255,255,255,0.2)"> · </span>');
-      h += `<div class="nsc-group"><div class="nsc-shift-row">`;
-      h += `<span class="nsc-shift-label">${shift}</span>`;
-      h += `<span class="nsc-names">${names}</span>`;
-      h += `</div></div>`;
-    });
+  function renderGroup(label, list) {
+    if (!list.length) return '';
+    let h = `<div style="font-size:0.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,0.35);padding:0.6rem 0 0.25rem;">${label}</div>`;
+    h += `<div style="display:flex;flex-wrap:wrap;gap:0.35rem;">`;
+    for (const {emp, shift, zone, nameStyle, zColor} of list) {
+      const zoneBadge = zone ? `<span style="font-size:0.58rem;color:${zColor||'rgba(255,255,255,0.5)'};margin-left:0.25rem">${zone}</span>` : '';
+      h += `<div style="background:rgba(255,255,255,0.06);border-radius:8px;padding:0.3rem 0.55rem;font-size:0.72rem;display:flex;align-items:center;gap:0.2rem;">
+        <span style="${nameStyle}">${emp.name}</span>
+        <span style="color:rgba(255,255,255,0.4);font-size:0.65rem">${shift}</span>${zoneBadge}
+      </div>`;
+    }
+    h += `</div>`;
     return h;
   }
 
-  const MONTH_NAMES = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-  const DOW_ACC = ['воскресенье','понедельник','вторник','среду','четверг','пятницу','субботу'];
-  const dow = new Date(year, monthIdx, nextDay).getDay();
-  const dateStr = `${nextDay} ${MONTH_NAMES[monthIdx]}, ${DOW_ACC[dow]}`;
+  const dow = new Date(year, monthIdx, displayDay).getDay();
+  const DOW_FULL2 = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
 
-  let html = `<div style="padding:0.8rem 1rem 0.3rem">
-    <div class="s-label">Состав смены</div>
-    <div class="nsc-date">${dateStr}</div>
-  </div>`;
-
-  if (!roleEmps.official.length && !roleEmps.runner.length) {
-    html += `<div style="padding:1.5rem 1rem;color:rgba(255,255,255,0.3);font-size:0.82rem;">Нет данных о коллегах</div>`;
+  let myBlock = '';
+  if (!isMyOff) {
+    const zk = zoneKey2(myZone);
+    const zColor = ZONE_COLORS_MAP2[zk] || '';
+    const zoneLine = myZone ? `<span style="color:${zColor};font-size:0.72rem;margin-left:0.4rem">${myZone}</span>` : '';
+    myBlock = `<div style="background:rgba(245,64,41,0.1);border:1px solid rgba(245,64,41,0.25);border-radius:10px;padding:0.5rem 0.75rem;margin-bottom:0.6rem;display:flex;align-items:center;gap:0.4rem;">
+      <span style="font-size:0.75rem;color:rgba(255,255,255,0.6)">Твоя смена:</span>
+      <span style="font-weight:700;color:#F54029">${myShiftVal}</span>${zoneLine}
+    </div>`;
   } else {
-    html += renderRoleSection('Официанты', roleEmps.official);
-    html += renderRoleSection('Раннеры', roleEmps.runner);
+    myBlock = `<div style="background:rgba(255,255,255,0.04);border-radius:10px;padding:0.5rem 0.75rem;margin-bottom:0.6rem;font-size:0.75rem;color:rgba(255,255,255,0.35)">У тебя выходной</div>`;
   }
 
-  const myShiftType = myShiftVal;
-  const myZone = myZones[nextDay] || null;
-  const myZk = zoneKey(myZone);
-  const myColor = myZk ? (ZONE_COLORS_MAP[myZk] || '#F54029') : '#F54029';
-  html += `<div class="nsc-myshift">Твоя смена: <span style="color:${myColor};font-weight:700">${myShiftType}${myZone?' · '+myZone:''}</span></div>`;
-  el.innerHTML = html;
+  const body = `
+    <div style="padding:0 0.8rem 1rem;">
+      <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);padding:0.4rem 0 0.6rem;">${DOW_FULL2[dow]}, ${displayDay} ${month}</div>
+      ${myBlock}
+      <div class="s-label" style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:0.5rem;">Состав смены</div>
+      ${renderGroup('Официанты', waiters)}
+      ${renderGroup('Раннеры', runners)}
+      ${(!waiters.length && !runners.length) ? '<div style="color:rgba(255,255,255,0.3);font-size:0.8rem;padding:0.5rem 0">Нет данных по смене</div>' : ''}
+    </div>`;
+
+  el.innerHTML = pickerHtml + body;
 }
 
 // ── SUBTABS ──
@@ -2444,7 +2475,7 @@ loadEmployeesFromFirebase();
 loadEventsFromFirestore();
 
 // Рендер сетки-календаря из Firebase-данных (без горизонтального скролла)
-function renderMyStripFirebase(containerId, days, dowFn, startDay, endDay) {
+function renderMyStripFirebase(containerId, days, zones, dowFn, startDay, endDay) {
   const el = document.getElementById(containerId);
   if (!el) return;
   const todayDate = new Date().getDate();
@@ -2468,13 +2499,12 @@ function renderMyStripFirebase(containerId, days, dowFn, startDay, endDay) {
         <div class="dc-num">${d}</div>
         <div class="dc-shift">—</div></div>`;
     } else {
-      const parts = v.split('/');
-      let shift = parts[0];
+      let shift = v.split('/')[0];
       if (shift === 'В') {
         const _dow = dowFn(d);
         shift = _dow === 5 ? 'В16' : (_dow === 0 || _dow === 6) ? 'В15' : 'В18';
       }
-      const zone = parts[1] || null;
+      const zone = (zones && zones[d]) || v.split('/')[1] || null;
       const zc = zoneClass(zone);
       const rawShift = v.replace(/'/g, "\\'");
       html += `<div class="day-card work${zc?' '+zc:''}${isToday?' today':''}" onclick="openSwapSheet(${d},'${rawShift}')">
@@ -2630,8 +2660,9 @@ async function loadAndRenderSchedule(employeeDocId) {
       _swapSchedMeta = { year, monthIdx, periodStart, periodEnd, month };
       const empData = cells[employeeDocId] || {};
       const days = empData.days || {};
+      const zones = empData.zones || {};
       function dowFn(d) { return new Date(year, monthIdx, d).getDay(); }
-      renderMyStripFirebase('my-strip', days, dowFn, periodStart, periodEnd);
+      renderMyStripFirebase('my-strip', days, zones, dowFn, periodStart, periodEnd);
       renderNextShift(days, year, monthIdx, periodStart, periodEnd);
       // Live-обновление открытых вкладок "Весь зал" и "Состав смены"
       const activeSub = ['mine','next','all'].find(id => {
@@ -3172,6 +3203,7 @@ async function submitWishes() {
 let _swapSchedId = null;
 let _swapSchedCells = null;
 let _swapSchedMeta = null;
+let _selectedCompositionDay = null; // for Состав смены day picker
 let _swapDay = null;
 let _swapMyShift = null;
 let _swapMode = 'swap';
