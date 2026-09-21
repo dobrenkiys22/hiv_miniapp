@@ -3108,6 +3108,8 @@ async function doManagerLogin() {
 function loginManager(mgr) {
   currentManager = mgr;
   saveMgrSession(mgr);
+  // Автоматически сохраняем Telegram ID при входе
+  saveMgrTelegramId(mgr.id);
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').style.display = 'none';
   document.getElementById('manager-app-screen').style.display = '';
@@ -4277,6 +4279,20 @@ async function tgSendMessage(chatId, text, extra) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', ...extra })
     });
+  } catch(e) { /* silent */ }
+}
+
+// Сохраняем Telegram ID менеджера при входе
+async function saveMgrTelegramId(managerId) {
+  try {
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (tgUser?.id && db) {
+      await db.collection('managers').doc(managerId).update({ telegramId: tgUser.id });
+      // Обновляем локальный кеш
+      const m = MANAGERS.find(m => m.id === managerId);
+      if (m) m.telegramId = tgUser.id;
+      if (currentManager?.id === managerId) currentManager.telegramId = tgUser.id;
+    }
   } catch(e) { /* silent */ }
 }
 

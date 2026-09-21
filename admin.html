@@ -1486,9 +1486,6 @@ a { color: var(--gold); }
               <div class="adm-f"><label>Имя</label><input id="nm-name" placeholder="Иван Иванов"></div>
               <div class="adm-f"><label>Пароль</label><input id="nm-pwd" type="password" maxlength="30" placeholder="пароль"></div>
             </div>
-            <div class="adm-row">
-              <div class="adm-f"><label>Telegram ID <span style="color:rgba(255,255,255,0.4);font-size:0.7rem;">(необяз.)</span></label><input id="nm-tgid" placeholder="123456789"></div>
-            </div>
             <div class="btn-row">
               <button class="btn-xs prim" onclick="addManager()" style="background:#F54029;">+ Добавить менеджера</button>
             </div>
@@ -2499,21 +2496,19 @@ async function loadManagers() {
 async function addManager() {
   const name = document.getElementById('nm-name').value.trim();
   const pwd  = document.getElementById('nm-pwd').value.trim();
-  const tgid = document.getElementById('nm-tgid').value.trim();
   if (!name) { toast('Введите имя менеджера'); return; }
   if (!pwd)  { toast('Введите пароль'); return; }
   if (managers.some(m => m.name === name)) { toast('Менеджер с таким именем уже есть'); return; }
   try {
-    const data = { name, password: pwd, telegramId: tgid || null };
+    const data = { name, password: pwd, telegramId: null };
     const ref = await db.collection('managers').add(data);
     managers.push({ id: ref.id, ...data });
     document.getElementById('nm-name').value = '';
     document.getElementById('nm-pwd').value  = '';
-    document.getElementById('nm-tgid').value = '';
     renderManagerList();
     renderSchedGrid();
     toast(`${name} добавлен как менеджер`);
-  } catch(e) { toast('Ошибка добавления менеджера'); }
+  } catch(e) { console.error('addManager:', e); toast('Ошибка: ' + e.message); }
 }
 
 async function removeManager(id, name) {
