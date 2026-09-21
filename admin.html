@@ -624,6 +624,7 @@ a { color: var(--gold); }
 .sh-U   { background: rgba(255,210,80,0.12); }
 .sh-D12 { background: rgba(80,160,255,0.1); }
 .sh-V   { background: rgba(160,100,255,0.1); }
+.sh-X   { background: rgba(30,60,140,0.13); }
 /* Weekend cols */
 .col-wknd { background: rgba(255,180,80,0.04) !important; }
 /* Wish indicators in schedule grid */
@@ -1977,7 +1978,7 @@ function renderSchedGrid() {
         const isVac = mgrVacSet.has(d);
         const shift = isVac ? 'В' : (ms.days?.[d] || '');
         const zone  = isVac ? '' : (ms.zones?.[d] || '');
-        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
+        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':shift==='Х'?'sh-X':'';
         const zClr  = zone ? ZONE_CLR[zone] : '';
         const vacCls = isVac ? ' cell-vacation' : '';
         h += `<td class="cell ${shCls}${wknd?' col-wknd':''}${vacCls}" style="position:relative"
@@ -2019,7 +2020,7 @@ function renderSchedGrid() {
         }
         const shift = es.days?.[d] || '';
         const zone  = es.zones?.[d] || '';
-        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
+        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':shift==='Х'?'sh-X':'';
         const zClr  = zone ? ZONE_CLR[zone] : '';
         // Conflict detection
         const isConflict   = !!shift && wStrict.has(d);
@@ -2105,7 +2106,7 @@ function openPopup(cell, evt) {
   const wishInfo = cell.dataset.wish || '';
   popupEmpId = empId; popupDay = day; popupIsMgr = cell.dataset.dept === 'manager';
   const popup = document.getElementById('cell-popup');
-  const shifts = isRun ? ['Д12','В',''] : ['У','Д12','В',''];
+  const shifts = popupIsMgr ? ['Х','У','Д12','В',''] : isRun ? ['Д12','В',''] : ['У','Д12','В',''];
   let html = '';
   // Show what employee wished for (if any)
   if (wishInfo) {
@@ -3452,7 +3453,7 @@ function renderHistGrid(containerId, p, data) {
       days.forEach(({d,wknd}) => {
         const shift = es.days?.[d] || '';
         const zone  = es.zones?.[d] || '';
-        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
+        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':shift==='Х'?'sh-X':'';
         const zClr  = zone ? ZONE_CLR[zone] : '';
         h += `<td class="cell ${shCls}${wknd?' col-wknd':''}" style="cursor:default">`;
         if (shift) {
