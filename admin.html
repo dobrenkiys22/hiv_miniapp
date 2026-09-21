@@ -2556,28 +2556,26 @@ function renderManagerList() {
   if (cnt) cnt.textContent = managers.length;
   if (!el) return;
   if (!managers.length) {
-    el.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:0.78rem;padding:0.5rem 0;">Нет менеджеров</div>';
+    el.innerHTML = '<div style="color:var(--t-ghost);font-size:0.78rem;padding:0.5rem 0;">Нет менеджеров</div>';
     return;
   }
   el.innerHTML = managers.map(m =>
-    `<div class="emp-list-row" style="padding:0.65rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.06);">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.35rem;">
-        <span style="font-weight:600;font-size:0.88rem;">${m.name}</span>
-        <button onclick="removeManager('${m.id}','${m.name}')" style="background:rgba(245,64,41,0.15);border:1px solid rgba(245,64,41,0.3);color:#F54029;border-radius:6px;font-size:0.7rem;padding:0.2rem 0.5rem;cursor:pointer;flex-shrink:0;">Удалить</button>
-      </div>
-      <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-bottom:0.5rem;">
-        📧 ${m.email ? m.email : '<span style="color:rgba(255,120,80,0.8)">email не задан</span>'}
-        ${m.telegramId ? `&nbsp;·&nbsp;<span style="color:#8ab4f8">TG ✓</span>` : ''}
-      </div>
-      <div style="display:flex;gap:0.4rem;align-items:center;">
+    `<div class="emp-list-row" style="flex-wrap:wrap;gap:0.4rem;padding:0.6rem 0;">
+      <span style="font-weight:600;font-size:0.85rem;flex:0 0 auto;min-width:120px;">${m.name}</span>
+      <span style="font-size:0.7rem;color:var(--t-ghost);flex:0 0 auto;">
+        ${m.email ? `📧 ${m.email}` : '<span style="color:#c0694a;">email не задан</span>'}
+        ${m.telegramId ? '&nbsp;·&nbsp;TG ✓' : ''}
+        ${m.password ? '&nbsp;·&nbsp;ПИН задан' : '<span style="color:#c0694a;">&nbsp;·&nbsp;ПИН не задан</span>'}
+      </span>
+      <div style="display:flex;gap:0.35rem;align-items:center;flex:1;min-width:200px;">
         <input id="mpe-${m.id}" type="email" placeholder="новый email"
-          style="flex:1.2;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);border-radius:6px;padding:0.28rem 0.45rem;color:#fff;font-size:0.7rem;outline:none;min-width:0;"
+          style="flex:1.4;border:1px solid var(--b-soft);border-radius:var(--r-sm);padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--t-main);background:#fff;outline:none;min-width:0;"
           onkeydown="if(event.key==='Enter')saveMgrCreds('${m.id}')">
-        <input id="mpp-${m.id}" type="password" placeholder="новый пин-код"
-          style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);border-radius:6px;padding:0.28rem 0.45rem;color:#fff;font-size:0.7rem;outline:none;min-width:0;"
+        <input id="mpp-${m.id}" type="text" placeholder="новый пин"
+          style="flex:1;border:1px solid var(--b-soft);border-radius:var(--r-sm);padding:0.3rem 0.5rem;font-size:0.72rem;color:var(--t-main);background:#fff;outline:none;min-width:0;"
           onkeydown="if(event.key==='Enter')saveMgrCreds('${m.id}')">
-        <button onclick="saveMgrCreds('${m.id}')" title="Сохранить"
-          style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;font-size:0.78rem;padding:0.28rem 0.5rem;cursor:pointer;flex-shrink:0;">💾</button>
+        <button class="btn-xs prim" onclick="saveMgrCreds('${m.id}')" title="Сохранить">💾</button>
+        <button class="btn-xs red" onclick="removeManager('${m.id}','${m.name.replace(/'/g,"\\'")}')">✕</button>
       </div>
     </div>`
   ).join('');
