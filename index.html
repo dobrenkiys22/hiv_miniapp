@@ -9,6 +9,7 @@
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
 @font-face {
   font-family: 'Halvar';
@@ -896,16 +897,38 @@ body {
       <button onclick="toggleManagerMode()" id="mgr-mode-toggle" style="background:none;border:none;color:rgba(255,255,255,0.35);font-size:0.75rem;cursor:pointer;padding:0.5rem;">Войти как менеджер ›</button>
     </div>
     <div id="mgr-login-panel" style="display:none;margin-top:0.5rem;">
-      <div class="login-sub" style="margin-bottom:0.6rem;">Выбери своё имя</div>
-      <select id="mgr-select" class="login-input" style="margin-bottom:0.75rem;background:#1a1a2e;color:#fff;cursor:pointer;">
-        <option value="">— менеджер —</option>
-      </select>
-      <div style="position:relative;margin-bottom:0.75rem;">
-        <input class="login-input" id="mgr-pwd" type="password" placeholder="Пароль менеджера" autocomplete="off" maxlength="30"
-          onkeydown="if(event.key==='Enter')doManagerLogin()" style="margin-bottom:0;padding-right:3rem;">
+      <!-- Шаг 1: Email -->
+      <div id="mgr-s1">
+        <div class="login-sub" style="margin-bottom:0.6rem;">Введи свою рабочую почту</div>
+        <input class="login-input" id="mgr-email" type="email" placeholder="ivanov@mail.ru"
+          autocomplete="email" maxlength="100"
+          onkeydown="if(event.key==='Enter')mgrStep1()">
+        <button class="login-btn" onclick="mgrStep1()">Продолжить →</button>
+        <div class="login-error" id="mgr-err-1"></div>
       </div>
-      <button class="login-btn" onclick="doManagerLogin()">Войти как менеджер →</button>
-      <div class="login-error" id="mgr-login-err"></div>
+      <!-- Шаг 2: Пароль -->
+      <div id="mgr-s2" style="display:none;">
+        <div class="login-sub" style="color:rgba(255,255,255,0.5);font-size:0.78rem;margin-bottom:0.15rem;">Привет,</div>
+        <div class="login-sub" style="font-size:1rem;font-weight:700;margin-bottom:0.75rem;" id="mgr-found-name"></div>
+        <input class="login-input" id="mgr-pwd2" type="password" placeholder="Пароль"
+          autocomplete="off" maxlength="30"
+          onkeydown="if(event.key==='Enter')mgrStep2()">
+        <button class="login-btn" id="mgr-s2-btn" onclick="mgrStep2()">Получить код на почту →</button>
+        <div class="login-error" id="mgr-err-2"></div>
+        <button onclick="mgrResetLogin()" style="background:none;border:none;color:rgba(255,255,255,0.28);font-size:0.7rem;cursor:pointer;margin-top:0.4rem;display:block;width:100%;text-align:center;">‹ Другая почта</button>
+      </div>
+      <!-- Шаг 3: OTP-код -->
+      <div id="mgr-s3" style="display:none;">
+        <div class="login-sub" style="margin-bottom:0.2rem;">Код отправлен на почту</div>
+        <div id="mgr-otp-hint" style="color:#f5a83e;font-size:0.8rem;margin-bottom:0.75rem;word-break:break-all;"></div>
+        <input class="login-input" id="mgr-otp" type="text" inputmode="numeric" pattern="[0-9]*"
+          placeholder="6-значный код" maxlength="6"
+          onkeydown="if(event.key==='Enter')mgrStep3()">
+        <button class="login-btn" onclick="mgrStep3()">Войти →</button>
+        <div class="login-error" id="mgr-err-3"></div>
+        <button id="mgr-resend-btn" onclick="mgrResendOtp()" style="background:none;border:none;color:rgba(255,255,255,0.3);font-size:0.72rem;cursor:pointer;margin-top:0.5rem;display:block;width:100%;text-align:center;">Отправить код повторно</button>
+        <button onclick="mgrResetLogin()" style="background:none;border:none;color:rgba(255,255,255,0.22);font-size:0.7rem;cursor:pointer;margin-top:0.2rem;display:block;width:100%;text-align:center;">‹ Начать заново</button>
+      </div>
     </div>
   </div>
 
@@ -2713,6 +2736,13 @@ function buyItem(name, price) {
 }
 
 
+// ── EMAILJS CONFIG ──
+// Зарегистрируйтесь на emailjs.com (бесплатно) и вставьте свои ключи:
+const EMAILJS_PUBLIC_KEY  = 'ВСТАВИТЬ_PUBLIC_KEY';   // Account → General
+const EMAILJS_SERVICE_ID  = 'ВСТАВИТЬ_SERVICE_ID';   // Email Services → ваш сервис
+const EMAILJS_TEMPLATE_ID = 'ВСТАВИТЬ_TEMPLATE_ID';  // Email Templates → ваш шаблон
+// Переменные шаблона: {{manager_name}}, {{otp_code}}, {{to_email}}
+
 // ── FIREBASE ──
 const firebaseConfig = {
   apiKey: "AIzaSyBWLlbct__8oKIxsdm-Otl6QxTbKQBRFtA",
@@ -3239,12 +3269,120 @@ function getMgrSession() {
 }
 
 // ── MANAGER LOGIN UI ──
+let _mgrOtpState = { mgr: null, code: null, expires: 0 };
+
+function mgrResetLogin() {
+  _mgrOtpState = { mgr: null, code: null, expires: 0 };
+  const show = id => { const el = document.getElementById(id); if(el) el.style.display = ''; };
+  const hide = id => { const el = document.getElementById(id); if(el) el.style.display = 'none'; };
+  show('mgr-s1'); hide('mgr-s2'); hide('mgr-s3');
+  ['mgr-email','mgr-pwd2','mgr-otp'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['mgr-err-1','mgr-err-2','mgr-err-3'].forEach(id => { const el = document.getElementById(id); if(el) el.textContent = ''; });
+}
+
+async function mgrStep1() {
+  const email = (document.getElementById('mgr-email')?.value || '').trim().toLowerCase();
+  const errEl = document.getElementById('mgr-err-1');
+  if (!email) { if(errEl) errEl.textContent = 'Введи email'; return; }
+  if (errEl) errEl.textContent = 'Поиск...';
+  let mgr = MANAGERS.find(m => (m.email || '').toLowerCase() === email);
+  if (!mgr && db) {
+    try {
+      const snap = await db.collection('managers').where('email','==',email).get();
+      if (!snap.empty) {
+        const doc = snap.docs[0]; const d = doc.data();
+        mgr = { id: doc.id, name: d.name||doc.id, password: d.password||'', email: d.email||'', telegramId: d.telegramId||null };
+      }
+    } catch(e) {}
+  }
+  if (errEl) errEl.textContent = '';
+  if (!mgr) { if(errEl) errEl.textContent = 'Менеджер с такой почтой не найден'; return; }
+  _mgrOtpState.mgr = mgr;
+  const nameEl = document.getElementById('mgr-found-name');
+  if (nameEl) nameEl.textContent = mgr.name;
+  document.getElementById('mgr-s1').style.display = 'none';
+  document.getElementById('mgr-s2').style.display = '';
+  setTimeout(() => document.getElementById('mgr-pwd2')?.focus(), 80);
+}
+
+async function mgrStep2() {
+  const pwd   = document.getElementById('mgr-pwd2')?.value || '';
+  const errEl = document.getElementById('mgr-err-2');
+  if (!pwd) { if(errEl) errEl.textContent = 'Введи пароль'; return; }
+  if (errEl) errEl.textContent = '';
+  const mgr = _mgrOtpState.mgr;
+  if (!mgr) { mgrResetLogin(); return; }
+  if (mgr.password !== pwd) { if(errEl) errEl.textContent = 'Неверный пароль'; return; }
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  _mgrOtpState.code    = code;
+  _mgrOtpState.expires = Date.now() + 10 * 60 * 1000;
+  const btn = document.getElementById('mgr-s2-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Отправляем…'; }
+  const sent = await sendOtpEmail(mgr.email, mgr.name, code);
+  if (btn) { btn.disabled = false; btn.textContent = 'Получить код на почту →'; }
+  if (!sent) {
+    if(errEl) errEl.textContent = 'Не удалось отправить письмо. Проверьте настройки EmailJS.';
+    return;
+  }
+  const hintEl = document.getElementById('mgr-otp-hint');
+  if (hintEl) hintEl.textContent = mgr.email;
+  document.getElementById('mgr-s2').style.display = 'none';
+  document.getElementById('mgr-s3').style.display = '';
+  setTimeout(() => document.getElementById('mgr-otp')?.focus(), 80);
+}
+
+function mgrStep3() {
+  const otpVal = (document.getElementById('mgr-otp')?.value || '').trim();
+  const errEl  = document.getElementById('mgr-err-3');
+  if (!otpVal) { if(errEl) errEl.textContent = 'Введи код'; return; }
+  if (errEl) errEl.textContent = '';
+  const { mgr, code, expires } = _mgrOtpState;
+  if (!mgr || !code) { mgrResetLogin(); return; }
+  if (Date.now() > expires) { if(errEl) errEl.textContent = 'Код устарел — запроси новый'; return; }
+  if (otpVal !== code) { if(errEl) errEl.textContent = 'Неверный код'; return; }
+  _mgrOtpState = { mgr: null, code: null, expires: 0 };
+  loginManager(mgr);
+}
+
+async function mgrResendOtp() {
+  const { mgr } = _mgrOtpState;
+  if (!mgr) { mgrResetLogin(); return; }
+  const code = String(Math.floor(100000 + Math.random() * 900000));
+  _mgrOtpState.code    = code;
+  _mgrOtpState.expires = Date.now() + 10 * 60 * 1000;
+  const btn = document.getElementById('mgr-resend-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Отправляем…'; }
+  const sent = await sendOtpEmail(mgr.email, mgr.name, code);
+  if (btn) { btn.disabled = false; btn.textContent = 'Отправить код повторно'; }
+  const errEl = document.getElementById('mgr-err-3');
+  if (!sent) { if(errEl) errEl.textContent = 'Ошибка отправки — попробуй ещё раз'; }
+  else { if(errEl) errEl.textContent = ''; }
+}
+
+async function sendOtpEmail(toEmail, managerName, code) {
+  try {
+    if (!window.emailjs) throw new Error('EmailJS SDK не загружен');
+    if (EMAILJS_PUBLIC_KEY === 'ВСТАВИТЬ_PUBLIC_KEY') throw new Error('EmailJS не настроен');
+    emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email:     toEmail,
+      manager_name: managerName,
+      otp_code:     code
+    });
+    return true;
+  } catch(e) {
+    console.warn('[HiV] sendOtpEmail:', e.message);
+    return false;
+  }
+}
+
 function toggleManagerMode() {
   const panel = document.getElementById('mgr-login-panel');
   const btn   = document.getElementById('mgr-mode-toggle');
   const open  = panel.style.display === 'none';
   panel.style.display = open ? '' : 'none';
   btn.textContent = open ? '‹ Назад' : 'Войти как менеджер ›';
+  if (open) { mgrResetLogin(); setTimeout(() => document.getElementById('mgr-email')?.focus(), 80); }
 }
 
 async function loadManagers() {
@@ -3253,39 +3391,9 @@ async function loadManagers() {
     const snap = await db.collection('managers').get();
     MANAGERS = snap.docs.map(doc => {
       const d = doc.data();
-      return { id: doc.id, name: d.name || doc.id, password: d.password || '', telegramId: d.telegramId || null, shift: d.shift || null };
+      return { id: doc.id, name: d.name || doc.id, password: d.password || '', email: d.email || '', telegramId: d.telegramId || null, shift: d.shift || null };
     });
-    // Populate select
-    const sel = document.getElementById('mgr-select');
-    if (sel) {
-      sel.innerHTML = '<option value="">— менеджер —</option>';
-      MANAGERS.forEach(m => { sel.innerHTML += `<option value="${m.id}">${m.name}</option>`; });
-    }
   } catch(e) { console.warn('[HiV] loadManagers error:', e.message); }
-}
-
-async function doManagerLogin() {
-  const selEl = document.getElementById('mgr-select');
-  const pwdEl = document.getElementById('mgr-pwd');
-  const errEl = document.getElementById('mgr-login-err');
-  const mgrId = selEl?.value;
-  const pwd   = pwdEl?.value || '';
-  if (!mgrId) { if(errEl) errEl.textContent = 'Выбери имя менеджера'; return; }
-  if (!pwd)   { if(errEl) errEl.textContent = 'Введи пароль'; return; }
-  if (errEl) errEl.textContent = '';
-  let mgr = MANAGERS.find(m => m.id === mgrId);
-  if (!mgr && db) {
-    try {
-      const doc = await db.collection('managers').doc(mgrId).get();
-      if (doc.exists) {
-        const d = doc.data();
-        mgr = { id: doc.id, name: d.name || doc.id, password: d.password || '', telegramId: d.telegramId || null };
-      }
-    } catch(e) {}
-  }
-  if (!mgr) { if(errEl) errEl.textContent = 'Менеджер не найден'; return; }
-  if (mgr.password !== pwd) { if(errEl) errEl.textContent = 'Неверный пароль'; return; }
-  loginManager(mgr);
 }
 
 function loginManager(mgr) {
@@ -3318,14 +3426,14 @@ function loginManager(mgr) {
 function doManagerLogout() {
   currentManager = null;
   clearMgrSession();
+  _mgrOtpState = { mgr: null, code: null, expires: 0 };
   document.getElementById('manager-app-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = '';
   const panel = document.getElementById('mgr-login-panel');
   if (panel) panel.style.display = 'none';
   const btn = document.getElementById('mgr-mode-toggle');
   if (btn) btn.textContent = 'Войти как менеджер ›';
-  const pwd = document.getElementById('mgr-pwd');
-  if (pwd) pwd.value = '';
+  mgrResetLogin();
 }
 
 // ── MANAGER TAB SWITCHING ──

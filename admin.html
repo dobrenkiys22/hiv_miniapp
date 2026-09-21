@@ -1485,6 +1485,7 @@ a { color: var(--gold); }
             <h3 style="color:#F54029;">Добавить менеджера</h3>
             <div class="adm-row">
               <div class="adm-f"><label>Имя</label><input id="nm-name" placeholder="Иван Иванов"></div>
+              <div class="adm-f"><label>Email</label><input id="nm-email" type="email" placeholder="ivan@mail.ru"></div>
               <div class="adm-f"><label>Пароль</label><input id="nm-pwd" type="password" maxlength="30" placeholder="пароль"></div>
             </div>
             <div class="btn-row">
@@ -2500,21 +2501,42 @@ async function loadManagers() {
 }
 
 async function addManager() {
-  const name = document.getElementById('nm-name').value.trim();
-  const pwd  = document.getElementById('nm-pwd').value.trim();
-  if (!name) { toast('Введите имя менеджера'); return; }
-  if (!pwd)  { toast('Введите пароль'); return; }
+  const name  = document.getElementById('nm-name').value.trim();
+  const email = (document.getElementById('nm-email').value || '').trim().toLowerCase();
+  const pwd   = document.getElementById('nm-pwd').value.trim();
+  if (!name)  { toast('Введите имя менеджера'); return; }
+  if (!email) { toast('Введите email менеджера'); return; }
+  if (!pwd)   { toast('Введите пароль'); return; }
   if (managers.some(m => m.name === name)) { toast('Менеджер с таким именем уже есть'); return; }
   try {
-    const data = { name, password: pwd, telegramId: null };
+    const data = { name, email, password: pwd, telegramId: null, vacationDays: [] };
     const ref = await db.collection('managers').add(data);
     managers.push({ id: ref.id, ...data });
-    document.getElementById('nm-name').value = '';
-    document.getElementById('nm-pwd').value  = '';
+    document.getElementById('nm-name').value  = '';
+    document.getElementById('nm-email').value = '';
+    document.getElementById('nm-pwd').value   = '';
     renderManagerList();
     renderSchedGrid();
     toast(`${name} добавлен как менеджер`);
   } catch(e) { console.error('addManager:', e); toast('Ошибка: ' + e.message); }
+}
+
+async function saveMgrCreds(id) {
+  const mgr = managers.find(m => m.id === id);
+  if (!mgr) return;
+  const newEmail = (document.getElementById('mpe-' + id)?.value || '').trim().toLowerCase();
+  const newPwd   = (document.getElementById('mpp-' + id)?.value || '').trim();
+  const updates  = {};
+  if (newEmail) updates.email    = newEmail;
+  if (newPwd)   updates.password = newPwd;
+  if (!Object.keys(updates).length) { toast('Введи новый email или пароль'); return; }
+  try {
+    await db.collection('managers').doc(id).update(updates);
+    if (newEmail) mgr.email    = newEmail;
+    if (newPwd)   mgr.password = newPwd;
+    renderManagerList();
+    toast('Данные менеджера обновлены');
+  } catch(e) { toast('Ошибка: ' + e.message); }
 }
 
 async function removeManager(id, name) {
@@ -2538,13 +2560,25 @@ function renderManagerList() {
     return;
   }
   el.innerHTML = managers.map(m =>
-    `<div class="emp-list-row" style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.06);">
-      <div>
+    `<div class="emp-list-row" style="padding:0.65rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;margin-bottom:0.35rem;">
         <span style="font-weight:600;font-size:0.88rem;">${m.name}</span>
-        <span style="color:rgba(255,255,255,0.35);font-size:0.72rem;margin-left:0.5rem;">••••</span>
-        ${m.telegramId ? `<span style="color:#8ab4f8;font-size:0.7rem;margin-left:0.5rem;">TG: ${m.telegramId}</span>` : ''}
+        <button onclick="removeManager('${m.id}','${m.name}')" style="background:rgba(245,64,41,0.15);border:1px solid rgba(245,64,41,0.3);color:#F54029;border-radius:6px;font-size:0.7rem;padding:0.2rem 0.5rem;cursor:pointer;flex-shrink:0;">Удалить</button>
       </div>
-      <button onclick="removeManager('${m.id}','${m.name}')" style="background:rgba(245,64,41,0.15);border:1px solid rgba(245,64,41,0.3);color:#F54029;border-radius:6px;font-size:0.7rem;padding:0.2rem 0.5rem;cursor:pointer;">Удалить</button>
+      <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);margin-bottom:0.5rem;">
+        📧 ${m.email ? m.email : '<span style="color:rgba(255,120,80,0.8)">email не задан</span>'}
+        ${m.telegramId ? `&nbsp;·&nbsp;<span style="color:#8ab4f8">TG ✓</span>` : ''}
+      </div>
+      <div style="display:flex;gap:0.4rem;align-items:center;">
+        <input id="mpe-${m.id}" type="email" placeholder="новый email"
+          style="flex:1.2;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);border-radius:6px;padding:0.28rem 0.45rem;color:#fff;font-size:0.7rem;outline:none;min-width:0;"
+          onkeydown="if(event.key==='Enter')saveMgrCreds('${m.id}')">
+        <input id="mpp-${m.id}" type="password" placeholder="новый пароль"
+          style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);border-radius:6px;padding:0.28rem 0.45rem;color:#fff;font-size:0.7rem;outline:none;min-width:0;"
+          onkeydown="if(event.key==='Enter')saveMgrCreds('${m.id}')">
+        <button onclick="saveMgrCreds('${m.id}')" title="Сохранить"
+          style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.18);color:#fff;border-radius:6px;font-size:0.78rem;padding:0.28rem 0.5rem;cursor:pointer;flex-shrink:0;">💾</button>
+      </div>
     </div>`
   ).join('');
 }
