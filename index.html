@@ -2997,10 +2997,17 @@ function renderMiniEvents() {
   if (!container) return;
   const dotColors = { sport:'#F54029', training:'#8ab4f8', fun:'#fbbf24', corp:'#f5c842', birthday:'#6fcfa0' };
   const todayStr = new Date().toISOString().slice(0, 10);
-  const upcoming = EVENTS.filter(ev => {
-    if (ev.sortKey) return ev.sortKey >= todayStr;
-    return !ev._isPast && !ev.past;
-  }).slice(0, 3);
+  const upcoming = EVENTS
+    .filter(ev => {
+      const key = ev.sortKey || ev.date || '';
+      return key ? key >= todayStr : (!ev._isPast && !ev.past);
+    })
+    .sort((a, b) => {
+      const ka = a.sortKey || a.date || '';
+      const kb = b.sortKey || b.date || '';
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    })
+    .slice(0, 3);
   if (!upcoming.length) {
     container.innerHTML = `<div style="color:rgba(255,255,255,0.3);font-size:0.8rem;padding:0.5rem 0;">Нет ближайших событий</div>`;
     return;
@@ -3459,9 +3466,10 @@ async function loadMgrSchedule() {
     const cfg = cfgDoc.data() || {};
     const { month, year, periodStart, periodEnd } = cfg;
     if (!month) { noSched(); return; }
+    // monthIdx needed for date arithmetic (DOW, new Date)
     const monthIdx = MONTHS_RU[(month || '').toLowerCase()];
-    if (monthIdx === undefined) { noSched(); return; }
-    const schedId = year + '_' + String(monthIdx + 1).padStart(2,'0');
+    // Use exact same key format as admin.html: "2026_Сентябрь_1-15"
+    const schedId = `${year}_${month}_${periodStart}-${periodEnd}`;
     const schedDoc = await db.collection('schedules').doc(schedId).get();
     if (!schedDoc.exists) { noSched(); return; }
     const data = schedDoc.data();
@@ -3648,21 +3656,41 @@ async function renderMgrEventsTab() {
 function renderMgrMiniEvents() {
   const el = document.getElementById('mgr-mini-events');
   if (!el) return;
-  if (EVENTS_CACHE.length) {
-    const today = new Date(); today.setHours(0,0,0,0);
-    const todayStr = today.toISOString().slice(0,10);
-    const upcoming = EVENTS_CACHE.filter(ev => {
-      if (ev.sortKey) return ev.sortKey >= todayStr;
-      return !ev._isPast && !ev.past;
-    }).slice(0,3);
-    if (!upcoming.length) { el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Нет событий</div>'; return; }
-    el.innerHTML = upcoming.map(ev => `<div style="padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-      <div style="font-size:0.82rem;font-weight:600;color:#fff;">${ev.title}</div>
-      <div style="font-size:0.72rem;color:rgba(255,255,255,0.4);">${fmtEvDate(ev)}</div>
-    </div>`).join('');
-  } else {
-    el.innerHTML = '<div style="padding:0.5rem 0;color:rgba(255,255,255,0.3);font-size:0.8rem;">Загрузка…</div>';
+  if (!EVENTS_CACHE.length) {
+    el.innerHTML = '<div style="padding:0.7rem 1rem;color:rgba(255,255,255,0.3);font-size:0.8rem;">Загрузка…</div>';
+    return;
   }
+  const todayStr = new Date().toISOString().slice(0,10);
+  const dotColors = { sport:'#F54029', training:'#8ab4f8', fun:'#fbbf24', corp:'#f5c842', birthday:'#6fcfa0' };
+  const upcoming = EVENTS_CACHE
+    .filter(ev => {
+      const key = ev.sortKey || ev.date || '';
+      return key ? key >= todayStr : (!ev._isPast && !ev.past);
+    })
+    .sort((a, b) => {
+      const ka = a.sortKey || a.date || '';
+      const kb = b.sortKey || b.date || '';
+      return ka < kb ? -1 : ka > kb ? 1 : 0;
+    })
+    .slice(0, 3);
+  if (!upcoming.length) {
+    el.innerHTML = '<div style="padding:0.7rem 1rem;color:rgba(255,255,255,0.3);font-size:0.8rem;">Нет ближайших событий</div>';
+    return;
+  }
+  el.innerHTML = upcoming.map(ev => {
+    const evIdx = EVENTS_CACHE.indexOf(ev);
+    const regBadge = ev.sheetUrl
+      ? `<span style="font-size:0.58rem;background:rgba(245,64,41,0.15);color:#F54029;border:1px solid rgba(245,64,41,0.35);padding:0.08rem 0.35rem;border-radius:6px;font-weight:700;margin-left:4px;vertical-align:middle;">🔴 регистрация открыта</span>`
+      : '';
+    return `<div class="mini-event-row" onclick="switchMgrTab('events',document.querySelector('#mgr-tab-bar .tb-item:last-child'))" style="cursor:pointer;">
+      <div class="me-dot" style="background:${dotColors[ev.type]||'#8ab4f8'};"></div>
+      <div class="me-text">
+        <div class="me-title">${ev.title}${regBadge}</div>
+        <div class="me-when">${fmtEvDate(ev)}${ev.label ? ' · ' + ev.label : ''}</div>
+      </div>
+      <div class="me-arrow">›</div>
+    </div>`;
+  }).join('');
 }
 
 // ── MANAGER SHIFT COMPOSITION ──
