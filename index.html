@@ -1220,8 +1220,32 @@ body {
 
   <!-- SCHEDULE TAB -->
   <div class="tab-content" id="tab-mgr-sched" style="display:none;">
-    <div class="greeting-block"><div class="greeting-line">Мой график</div></div>
-    <div id="mgr-sched-content"></div>
+    <!-- Sub-tabs -->
+    <div class="sched-subtabs">
+      <button class="sst active" id="msst-mine" onclick="switchMgrSub('mine')">Мой график</button>
+      <button class="sst" id="msst-next" onclick="switchMgrSub('next')">Состав смены</button>
+      <button class="sst" id="msst-all" onclick="switchMgrSub('all')">Весь зал</button>
+    </div>
+    <!-- MY SHIFTS -->
+    <div id="mgr-sub-mine">
+      <div id="mgr-sched-content"></div>
+    </div>
+    <!-- COMPOSITION -->
+    <div id="mgr-sub-next" style="display:none;">
+      <div id="mgr-compose-content2"></div>
+    </div>
+    <!-- FULL TABLE -->
+    <div id="mgr-sub-all" style="display:none;">
+      <div class="section" style="padding-top:0.8rem;">
+        <div class="s-label" id="mgr-full-table-title">Весь зал</div>
+      </div>
+      <div class="full-table-wrap">
+        <div class="full-table-half-label" id="mgr-full-table-label-a">1–15</div>
+        <table class="full-table" id="mgr-full-table-a"></table>
+        <div class="full-table-half-label" id="mgr-full-table-label-b">16–31</div>
+        <table class="full-table" id="mgr-full-table-b"></table>
+      </div>
+    </div>
   </div>
 
   <!-- TASKS TAB -->
@@ -1506,6 +1530,30 @@ function renderFullTable() {
       }
       html += '</tr>';
     });
+    // Managers section
+    if (_swapSchedManagerData && MANAGERS.length) {
+      html += `<tr><td class="ft-group-header" colspan="${cols + 1}" style="color:#F54029;">Менеджеры</td></tr>`;
+      MANAGERS.forEach(mgr => {
+        const mgrData = _swapSchedManagerData[mgr.id] || {};
+        const isMe = mgr.id === currentManager?.id;
+        html += `<tr class="ft-row${isMe?' ft-row-me':''}">`;
+        html += `<td class="ft-name-col" style="color:#F54029;font-weight:700;">${mgr.name}</td>`;
+        for (let d = fromDay; d <= toDay; d++) {
+          const shift = (mgrData.days || {})[d] || '';
+          const zone  = (mgrData.zones || {})[d] || null;
+          if (!shift || shift === 'В') {
+            html += `<td class="ft-cell ft-off">·</td>`;
+          } else {
+            const zk = zone ? 'ft-z-' + zoneKey(zone) : '';
+            const zColor = zone ? (ZONE_COLORS_MAP[zoneKey(zone)] || '') : '';
+            html += `<td class="ft-cell ${zk}"><span class="ft-shift" style="color:#F54029;">${shift}</span>`;
+            if (zone) html += `<span class="ft-zone" style="color:${zColor}">${zone}</span>`;
+            html += `</td>`;
+          }
+        }
+        html += '</tr>';
+      });
+    }
     html += '</tbody>';
     el.innerHTML = html;
   }
@@ -1520,6 +1568,110 @@ function renderFullTable() {
     buildHalf('full-table-a', 'full-table-label-a', periodStart, periodEnd);
     const lbEl = document.getElementById('full-table-label-b');
     const tbEl = document.getElementById('full-table-b');
+    if (lbEl) lbEl.style.display = 'none';
+    if (tbEl) tbEl.style.display = 'none';
+  }
+}
+
+// ── МЕНЕДЖЕР: ВЕСЬ ЗАЛ ──
+function renderMgrFullTable() {
+  const titleEl = document.getElementById('mgr-full-table-title');
+  if (!_swapSchedCells || !_swapSchedMeta) {
+    const el = document.getElementById('mgr-full-table-a');
+    if (el) el.innerHTML = '';
+    const el2 = document.getElementById('mgr-full-table-b');
+    if (el2) el2.innerHTML = '';
+    if (titleEl) titleEl.textContent = 'Весь зал — загрузка…';
+    return;
+  }
+  const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
+  if (titleEl) titleEl.textContent = `Весь зал — ${month} ${year}`;
+
+  const grouped = { pro: [], waiter: [], runner: [] };
+  EMPLOYEES.forEach(emp => { const g = empGroup(emp); grouped[g].push(emp); });
+  ['pro','waiter','runner'].forEach(g => grouped[g].sort((a,b)=>(a.order??999)-(b.order??999)));
+  const allEmps = [...grouped.pro, ...grouped.waiter, ...grouped.runner];
+
+  function buildMgrHalf(elId, labelElId, fromDay, toDay) {
+    const el = document.getElementById(elId);
+    const lEl = document.getElementById(labelElId);
+    if (!el) return;
+    if (lEl) { lEl.textContent = `${fromDay}–${toDay}`; lEl.style.display = ''; }
+    el.style.display = '';
+    const cols = toDay - fromDay + 1;
+    let html = `<colgroup><col style="width:20%">${'<col>'.repeat(cols)}</colgroup>`;
+    html += '<thead><tr>';
+    html += `<th class="ft-head-name">Имя</th>`;
+    for (let d = fromDay; d <= toDay; d++) {
+      const dow = new Date(year, monthIdx, d).getDay();
+      const isWknd = dow === 0 || dow === 6;
+      html += `<th class="ft-head-day${isWknd?' wknd':''}">${d}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    // Managers first
+    if (_swapSchedManagerData && MANAGERS.length) {
+      html += `<tr><td class="ft-group-header" colspan="${cols + 1}" style="color:#F54029;">Менеджеры</td></tr>`;
+      MANAGERS.forEach(mgr => {
+        const mgrData = _swapSchedManagerData[mgr.id] || {};
+        const isMe = mgr.id === currentManager?.id;
+        html += `<tr class="ft-row${isMe?' ft-row-me':''}">`;
+        html += `<td class="ft-name-col" style="color:#F54029;font-weight:700;">${mgr.name}</td>`;
+        for (let d = fromDay; d <= toDay; d++) {
+          const shift = (mgrData.days || {})[d] || '';
+          const zone  = (mgrData.zones || {})[d] || null;
+          if (!shift || shift === 'В') {
+            html += `<td class="ft-cell ft-off">·</td>`;
+          } else {
+            const zk = zone ? 'ft-z-' + zoneKey(zone) : '';
+            const zColor = zone ? (ZONE_COLORS_MAP[zoneKey(zone)] || '') : '';
+            html += `<td class="ft-cell ${zk}"><span class="ft-shift" style="color:#F54029;">${shift}</span>`;
+            if (zone) html += `<span class="ft-zone" style="color:${zColor}">${zone}</span>`;
+            html += `</td>`;
+          }
+        }
+        html += '</tr>';
+      });
+    }
+    // Employees
+    let lastGroup = null;
+    allEmps.forEach(emp => {
+      const g = empGroup(emp);
+      if (g !== lastGroup) {
+        const label = g === 'pro' ? 'ПРО' : g === 'waiter' ? 'Официанты' : 'Раннеры';
+        html += `<tr><td class="ft-group-header" colspan="${cols + 1}">${label}</td></tr>`;
+        lastGroup = g;
+      }
+      html += `<tr class="ft-row">`;
+      html += `<td class="ft-name-col">${emp.name}</td>`;
+      for (let d = fromDay; d <= toDay; d++) {
+        const empData = _swapSchedCells[emp.id] || {};
+        const shift = (empData.days || {})[d] || '';
+        const zone  = (empData.zones || {})[d] || null;
+        if (!shift || shift === 'off') {
+          html += `<td class="ft-cell ft-off">·</td>`;
+        } else {
+          const zk = zone ? 'ft-z-' + zoneKey(zone) : '';
+          const zColor = zone ? (ZONE_COLORS_MAP[zoneKey(zone)] || '') : '';
+          html += `<td class="ft-cell ${zk}"><span class="ft-shift">${shift}</span>`;
+          if (zone) html += `<span class="ft-zone" style="color:${zColor}">${zone}</span>`;
+          html += `</td>`;
+        }
+      }
+      html += '</tr>';
+    });
+    html += '</tbody>';
+    el.innerHTML = html;
+  }
+
+  const totalDays = periodEnd - periodStart + 1;
+  if (totalDays > 15) {
+    const mid = periodStart + Math.floor(totalDays / 2) - 1;
+    buildMgrHalf('mgr-full-table-a', 'mgr-full-table-label-a', periodStart, mid);
+    buildMgrHalf('mgr-full-table-b', 'mgr-full-table-label-b', mid + 1, periodEnd);
+  } else {
+    buildMgrHalf('mgr-full-table-a', 'mgr-full-table-label-a', periodStart, periodEnd);
+    const lbEl = document.getElementById('mgr-full-table-label-b');
+    const tbEl = document.getElementById('mgr-full-table-b');
     if (lbEl) lbEl.style.display = 'none';
     if (tbEl) tbEl.style.display = 'none';
   }
@@ -3289,6 +3441,138 @@ function switchMgrTab(name, btn) {
   document.querySelectorAll('#mgr-tab-bar .tb-item').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
   if (name === 'compose') renderMgrCompose();
+  if (name === 'sched') {
+    // Re-render current subtab
+    const activeSub = document.querySelector('.sst[id^="msst-"].active');
+    const subName = activeSub ? activeSub.id.replace('msst-', '') : 'mine';
+    switchMgrSub(subName);
+  }
+}
+
+function switchMgrSub(id) {
+  ['mine','next','all'].forEach(tab => {
+    const el = document.getElementById('mgr-sub-' + tab);
+    if (el) el.style.display = tab === id ? 'block' : 'none';
+    const btn = document.getElementById('msst-' + tab);
+    if (btn) btn.classList.toggle('active', tab === id);
+  });
+  if (id === 'all')  renderMgrFullTable();
+  if (id === 'next') renderMgrComposeSub();
+}
+
+// Render composition in the sched tab (reuses renderMgrCompose logic but targets mgr-compose-content2)
+function renderMgrComposeSub() {
+  const cont2 = document.getElementById('mgr-compose-content2');
+  if (!cont2) return;
+  // temporarily swap target, call renderMgrCompose logic inline
+  const saved = document.getElementById('mgr-compose-content');
+  // We'll just clone the logic by pointing to content2
+  _renderMgrComposeInto('mgr-compose-content2');
+}
+
+async function _renderMgrComposeInto(targetId) {
+  const cont = document.getElementById(targetId);
+  if (!cont) return;
+  if (!_swapSchedCells || !_swapSchedMeta) {
+    cont.innerHTML = '<div style="color:rgba(255,255,255,0.4);padding:1rem;text-align:center;">Загрузка расписания…</div>';
+    return;
+  }
+  const { year, monthIdx, periodStart, periodEnd, month } = _swapSchedMeta;
+  const now = new Date();
+  const today = now.getDate();
+  const workDays = [];
+  for (let d = periodStart; d <= periodEnd; d++) {
+    let hasWorkers = false;
+    for (const empId in _swapSchedCells) {
+      const s = (_swapSchedCells[empId].days || {})[d];
+      if (s && s !== 'off') { hasWorkers = true; break; }
+    }
+    if (!hasWorkers && _swapSchedManagerData) {
+      for (const mId in _swapSchedManagerData) {
+        const v = (_swapSchedManagerData[mId].days || {})[String(d)];
+        if (v && v !== 'В') { hasWorkers = true; break; }
+      }
+    }
+    if (hasWorkers) workDays.push(d);
+  }
+  const displayDay = _selectedCompositionDay || workDays.find(d => d >= today) || workDays[0];
+  if (!displayDay) {
+    cont.innerHTML = '<div style="color:rgba(255,255,255,0.4);padding:1rem;text-align:center;">Нет смен в этом периоде</div>';
+    return;
+  }
+  const DOW_SHORT = ['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+  let pickerHtml = `<div style="overflow-x:auto;padding:0.6rem 0.8rem 0.2rem;display:flex;gap:0.4rem;scrollbar-width:none;">`;
+  for (const d of workDays) {
+    const dow = new Date(year, monthIdx, d).getDay();
+    const isSelected = d === displayDay;
+    const isToday = d === today;
+    const bg = isSelected ? '#F54029' : 'rgba(245,64,41,0.12)';
+    const color = isSelected ? '#fff' : 'rgba(230,80,60,0.85)';
+    const border = isToday && !isSelected ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(245,64,41,0.2)';
+    pickerHtml += `<button onclick="_mgrComposePick2(${d},'${targetId}')" style="flex-shrink:0;background:${bg};color:${color};border:${border};border-radius:8px;padding:0.3rem 0.5rem;font-size:0.7rem;cursor:pointer;min-width:36px;text-align:center;font-family:inherit;line-height:1.2;">
+      <div style="font-weight:700">${d}</div>
+      <div style="opacity:0.8;font-size:0.6rem">${DOW_SHORT[dow]}</div>
+    </button>`;
+  }
+  pickerHtml += `</div>`;
+  const ZONE_COLORS_MAP2 = { 'бар':'#4caf7d','лифт':'#8ab4f8','печка':'#f5a83e','мангал':'#F54029' };
+  function zoneKey2(z){ return z ? z.toLowerCase().trim() : ''; }
+  const waiters = [], runners = [];
+  EMPLOYEES.forEach(emp => {
+    const empData = _swapSchedCells[emp.id] || {};
+    const shift = (empData.days || {})[displayDay] || '';
+    if (!shift || shift === 'off') return;
+    const zone = (empData.zones || {})[displayDay] || null;
+    const role = empGroup(emp);
+    const zk = zoneKey2(zone);
+    const zColor = ZONE_COLORS_MAP2[zk] || '';
+    const entry = { emp, shift, zone, zColor };
+    if (role === 'runner') runners.push(entry);
+    else waiters.push(entry);
+  });
+  function renderGrp2(label, list) {
+    if (!list.length) return '';
+    let h = `<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,0.35);padding:0.75rem 0 0.3rem;">${label}</div>`;
+    list.forEach(({emp, shift, zone, zColor}) => {
+      const zoneBadge = zone ? `<span style="font-size:0.65rem;color:${zColor||'rgba(255,255,255,0.5)'};font-weight:600">${zone}</span>` : '';
+      const nameColor = zColor ? zColor : 'rgba(255,255,255,0.9)';
+      h += `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.28rem 0.5rem;margin-bottom:0.15rem;background:rgba(255,255,255,0.04);border-radius:8px;">
+        <span style="color:${nameColor};font-size:0.8rem;font-weight:600;min-width:60px">${emp.name}</span>
+        <span style="color:rgba(255,255,255,0.35);font-size:0.7rem">${shift}</span>
+        ${zoneBadge}
+      </div>`;
+    });
+    return h;
+  }
+  let mgrBlock = '';
+  if (MANAGERS.length && _swapSchedManagerData) {
+    const managersOnShift = MANAGERS.filter(m => {
+      const mDays = (_swapSchedManagerData[m.id] || {}).days || {};
+      const v = mDays[String(displayDay)];
+      return v && v !== 'В';
+    }).map(m => {
+      const mDays = (_swapSchedManagerData[m.id] || {}).days || {};
+      const mZones = (_swapSchedManagerData[m.id] || {}).zones || {};
+      return { ...m, shift: mDays[String(displayDay)] || '', zone: mZones[String(displayDay)] || '' };
+    });
+    if (managersOnShift.length) mgrBlock = renderManagerGroup(managersOnShift);
+  }
+  const DOW_FULL2 = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+  const dow = new Date(year, monthIdx, displayDay).getDay();
+  const body = `<div style="padding:0 0.8rem 1rem;">
+    <div style="font-size:0.7rem;color:rgba(255,255,255,0.4);padding:0.4rem 0 0.6rem;">${DOW_FULL2[dow]}, ${displayDay} ${month}</div>
+    <div class="s-label" style="font-size:0.72rem;font-weight:700;color:rgba(255,255,255,0.7);margin-bottom:0.5rem;">Состав смены</div>
+    ${mgrBlock}
+    ${renderGrp2('Официанты', waiters)}
+    ${renderGrp2('Раннеры', runners)}
+    ${(!waiters.length && !runners.length && !mgrBlock) ? '<div style="color:rgba(255,255,255,0.3);font-size:0.8rem;padding:0.5rem 0">Нет данных по смене</div>' : ''}
+  </div>`;
+  cont.innerHTML = pickerHtml + body;
+}
+
+function _mgrComposePick2(day, targetId) {
+  _selectedCompositionDay = day;
+  _renderMgrComposeInto(targetId);
 }
 
 // ── MANAGER SCHEDULE ──
@@ -3311,7 +3595,11 @@ async function loadMgrSchedule() {
     const schedDoc = await db.collection('schedules').doc(schedId).get();
     if (!schedDoc.exists) { noSched(); return; }
     const data = schedDoc.data();
-    const mgrData = (data.managers || {})[currentManager.id];
+    // Populate global schedule vars so composition + full-hall tabs work for managers
+    _swapSchedCells = data.cells || {};
+    _swapSchedManagerData = data.managers || {};
+    _swapSchedMeta = { year, monthIdx, periodStart, periodEnd, month };
+    const mgrData = (_swapSchedManagerData)[currentManager.id];
     if (!mgrData) {
       if (cont) cont.innerHTML = '<div class="card" style="padding:1rem;color:rgba(255,255,255,0.4);text-align:center;">График не составлен</div>';
       noSched(); return;

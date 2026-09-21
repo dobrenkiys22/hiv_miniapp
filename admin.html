@@ -2791,17 +2791,49 @@ async function loadAdminEvents() {
   renderAdminEvents();
 }
 
-function renderAdminEvents() {
+async function renderAdminEvents() {
   const el = document.getElementById('events-admin-list');
   if (!el) return;
   if (!_adminEvents.length) {
     el.innerHTML = '<div style="font-size:0.8rem;color:var(--t-soft);padding:0.5rem 0;">Событий пока нет. Добавь вручную или перешли сообщение боту.</div>';
     return;
   }
-  const TYPE_COLOR = { sport:'#F54029', training:'#8ab4f8', fun:'#fbbf24', corp:'#f5c842' };
+  const TYPE_COLOR = { sport:'#F54029', training:'#8ab4f8', fun:'#fbbf24', corp:'#f5c842', corporate:'#a78bfa' };
+
+  // Load RSVP counts for events that allow RSVP
+  const rsvpCounts = {};
+  await Promise.all(_adminEvents.filter(ev => ev.allowRsvp).map(async ev => {
+    try {
+      const snap = await db.collection('events').doc(ev.id).collection('rsvps').get();
+      const coming = [], notComing = [];
+      snap.docs.forEach(d => {
+        const data = d.data();
+        if (data.status === 'coming') coming.push(data.name || d.id);
+        else notComing.push(data.name || d.id);
+      });
+      rsvpCounts[ev.id] = { coming, notComing };
+    } catch(e) { rsvpCounts[ev.id] = { coming: [], notComing: [] }; }
+  }));
+
   el.innerHTML = _adminEvents.map(ev => {
     const col = TYPE_COLOR[ev.type] || '#ccc';
     const orgs = (ev.organizers||[]).map(o => `@${o.handle}`).join(', ');
+    const rsvp = rsvpCounts[ev.id];
+    const addedByStr = ev.addedBy ? `<div style="font-size:0.68rem;color:var(--t-ghost);">👤 Добавил: ${ev.addedBy}</div>` : '';
+    let rsvpHtml = '';
+    if (rsvp) {
+      rsvpHtml = `<div style="margin-top:0.4rem;font-size:0.7rem;">`;
+      if (rsvp.coming.length) {
+        rsvpHtml += `<div style="color:#27ae60;font-weight:600;">✅ Придут (${rsvp.coming.length}): <span style="font-weight:400;">${rsvp.coming.join(', ')}</span></div>`;
+      }
+      if (rsvp.notComing.length) {
+        rsvpHtml += `<div style="color:#e07070;font-weight:600;">❌ Не придут (${rsvp.notComing.length}): <span style="font-weight:400;">${rsvp.notComing.join(', ')}</span></div>`;
+      }
+      if (!rsvp.coming.length && !rsvp.notComing.length) {
+        rsvpHtml += `<div style="color:var(--t-ghost);">Записей нет</div>`;
+      }
+      rsvpHtml += `</div>`;
+    }
     return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;margin-bottom:0.5rem;">
       <div style="min-width:36px;text-align:center;">
         <div style="font-size:1rem;font-weight:800;color:${col};">${ev.day||''}</div>
@@ -2811,7 +2843,9 @@ function renderAdminEvents() {
         <div style="font-size:0.85rem;font-weight:700;color:var(--t-main);">${ev.title||'Без названия'}</div>
         <div style="font-size:0.7rem;color:var(--t-soft);">${ev.date||''} ${ev.past?'· прошедшее':''}</div>
         ${orgs ? `<div style="font-size:0.7rem;color:var(--t-soft);">${orgs}</div>` : ''}
+        ${addedByStr}
         ${ev.sheetUrl ? `<div style="font-size:0.7rem;color:#27ae60;">📊 Google Таблица</div>` : ''}
+        ${rsvpHtml}
       </div>
       <div style="display:flex;gap:0.4rem;flex-shrink:0;">
         <button onclick="toggleEventPast('${ev.id}',${!ev.past})" title="${ev.past?'Вернуть в Скоро':'Пометить как прошедшее'}"
