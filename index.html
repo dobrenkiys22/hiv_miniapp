@@ -2789,7 +2789,11 @@ function renderAchTab(employee) {
   const tasks = employee.tasks || [];
   const btn   = document.getElementById('tb-ach-btn');
   const cont  = document.getElementById('tab-ach-content');
-  if (!achs.length && !tasks.length) {
+
+  // Только активные задания: не выполненные (нет doneAt)
+  const activeTasks = tasks.filter(t => !t.doneAt);
+
+  if (!achs.length && !activeTasks.length) {
     if (btn) btn.style.display = 'none';
     return;
   }
@@ -2797,34 +2801,34 @@ function renderAchTab(employee) {
 
   let html = '';
 
-  // ── Задания от менеджера ──
-  if (tasks.length) {
+  // ── Задания от менеджера (только активные) ──
+  if (activeTasks.length) {
     html += `<div class="section"><div class="s-label">Задания от менеджера</div><div class="card" style="padding:0 0.2rem;">`;
-    tasks.forEach((t, i) => {
-      const done    = !!t.doneAt;
-      const pending = !done && t.status === 'pending';
-      const icon    = done ? '✅' : pending ? '⏳' : '🎯';
+    activeTasks.forEach((t, i) => {
+      // Реальный индекс в исходном массиве tasks для markTaskDone
+      const realIdx = tasks.indexOf(t);
+      const pending = t.status === 'pending';
+      const icon    = pending ? '⏳' : '🎯';
       let dlBadge = '';
-      if (t.deadline && !done) {
+      if (t.deadline) {
         const dl    = new Date(t.deadline + 'T23:59:59');
         const today = new Date(); today.setHours(0,0,0,0);
         const days  = Math.ceil((dl - today) / 86400000);
         const dlFmt = dl.toLocaleDateString('ru', { day:'numeric', month:'long' });
-        if (days < 0)       dlBadge = `<div class="ach-when" style="margin-top:4px;color:#ff6b6b;">🔴 Дедлайн просрочен: ${dlFmt}</div>`;
+        if (days < 0)        dlBadge = `<div class="ach-when" style="margin-top:4px;color:#ff6b6b;">🔴 Дедлайн просрочен: ${dlFmt}</div>`;
         else if (days === 0) dlBadge = `<div class="ach-when" style="margin-top:4px;color:#ff6b6b;">🔴 Дедлайн сегодня!</div>`;
-        else if (days <= 3) dlBadge = `<div class="ach-when" style="margin-top:4px;color:#f5c842;">⚠️ Дедлайн: ${dlFmt} (${days} дн.)</div>`;
-        else                dlBadge = `<div class="ach-when" style="margin-top:4px;">📅 До ${dlFmt}</div>`;
+        else if (days <= 3)  dlBadge = `<div class="ach-when" style="margin-top:4px;color:#f5c842;">⚠️ Дедлайн: ${dlFmt} (${days} дн.)</div>`;
+        else                 dlBadge = `<div class="ach-when" style="margin-top:4px;">📅 До ${dlFmt}</div>`;
       }
-      html += `<div class="ach-row${done?' done':''}" style="padding:0.75rem 0.8rem;gap:0.8rem;">
+      html += `<div class="ach-row" style="padding:0.75rem 0.8rem;gap:0.8rem;">
         <div style="font-size:1.4rem;flex-shrink:0;">${icon}</div>
         <div class="ach-txt" style="flex:1;">
           <div class="ach-name-sm">${t.title}</div>
           ${t.desc ? `<div class="ach-desc-sm" style="margin-top:2px;">${t.desc}</div>` : ''}
           ${dlBadge}
-          ${done    ? `<div class="ach-when" style="margin-top:4px;">Выполнено ${t.doneAt}</div>` : ''}
           ${pending ? `<div class="ach-when" style="margin-top:4px;color:#f5c842;">Ждёт подтверждения менеджера</div>` : ''}
         </div>
-        ${!done && !pending ? `<button onclick="markTaskDone(${i})" style="flex-shrink:0;background:#F54029;border:none;border-radius:8px;color:#fff;font-size:0.7rem;font-weight:700;padding:0.35rem 0.6rem;cursor:pointer;">Готово</button>` : ''}
+        ${!pending ? `<button onclick="markTaskDone(${realIdx})" style="flex-shrink:0;background:#F54029;border:none;border-radius:8px;color:#fff;font-size:0.7rem;font-weight:700;padding:0.35rem 0.6rem;cursor:pointer;">Готово</button>` : ''}
       </div>`;
     });
     html += `</div></div>`;
