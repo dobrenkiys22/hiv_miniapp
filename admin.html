@@ -1479,6 +1479,25 @@ a { color: var(--gold); }
             <h3>Сотрудники (<span id="emp-count">0</span>)</h3>
             <div class="emp-list" id="emp-list-admin"></div>
           </div>
+          <!-- Add manager -->
+          <div class="adm-section" style="border-top:1px solid rgba(245,64,41,0.2);padding-top:1rem;margin-top:0.5rem;">
+            <h3 style="color:#F54029;">Добавить менеджера</h3>
+            <div class="adm-row">
+              <div class="adm-f"><label>Имя</label><input id="nm-name" placeholder="Иван Иванов"></div>
+              <div class="adm-f"><label>Пароль</label><input id="nm-pwd" type="password" maxlength="30" placeholder="пароль"></div>
+            </div>
+            <div class="adm-row">
+              <div class="adm-f"><label>Telegram ID <span style="color:rgba(255,255,255,0.4);font-size:0.7rem;">(необяз.)</span></label><input id="nm-tgid" placeholder="123456789"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn-xs prim" onclick="addManager()" style="background:#F54029;">+ Добавить менеджера</button>
+            </div>
+          </div>
+          <!-- Manager list -->
+          <div class="adm-section">
+            <h3>Менеджеры (<span id="mgr-count">0</span>)</h3>
+            <div id="mgr-list-admin"></div>
+          </div>
         </div>
       </div>
       <!-- VACATIONS TAB -->
@@ -1517,8 +1536,10 @@ const WNDS = ['вс','пн','вт','ср','чт','пт','сб'];
 let db        = null;
 let appCfg    = {};       // from Firestore config/main
 let employees = [];       // from Firestore /employees
-let schedData = {};       // {empId: {days:{d:shift}, zones:{d:zone}}}
-let wishesArr = [];       // from Firestore /wishes
+let schedData    = {};    // {empId: {days:{d:shift}, zones:{d:zone}}}
+let mgrSchedData = {};    // {managerId: {days:{d:shift}, zones:{d:zone}}}
+let managers     = [];    // from Firestore /managers
+let wishesArr    = [];    // from Firestore /wishes
 let curUser   = null;     // logged-in employee (or null for manager)
 let isMgr     = false;
 let periodKey = '';
@@ -1527,7 +1548,7 @@ let unsubWishes = null;   // onSnapshot unsubscribe for wishes
 /* employee form state */
 const empSt = { off: new Set(), strict: new Set(), shifts: new Map() };
 /* popup state */
-let popupEmpId = null, popupDay = null;
+let popupEmpId = null, popupDay = null, popupIsMgr = false;
 /* ──────────────────────────────────────
    FIREBASE SETUP
    ────────────────────────────────────── */
@@ -1608,6 +1629,8 @@ async function boot() {
     employees.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
     // Start realtime schedule listener (used by both manager and employee view)
     resetSchedListener();
+    // Load managers
+    loadManagers();
   } catch(e) {
     console.error('Boot error:', e);
     toast('Ошибка подключения к Firebase');
@@ -1945,6 +1968,30 @@ function renderSchedGrid() {
     { label:'— Ранеры',    filter: e => e.sub==='Ранеры' || (e.dept==='Ранеры' && !e.sub) },
   ];
   h += '<tbody>';
+  // ── Менеджеры (вверху) ──
+  if (managers.length) {
+    h += `<tr class="grp-row"><td colspan="${days.length+1}" style="color:#F54029;">— Менеджеры</td></tr>`;
+    managers.forEach(mgr => {
+      const ms = mgrSchedData[mgr.id] || { days:{}, zones:{} };
+      h += '<tr>';
+      h += `<td class="td-name" style="font-weight:700;">${mgr.name}</td>`;
+      days.forEach(({d, wknd}) => {
+        const shift = ms.days?.[d] || '';
+        const zone  = ms.zones?.[d] || '';
+        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':'';
+        const zClr  = zone ? ZONE_CLR[zone] : '';
+        h += `<td class="cell ${shCls}${wknd?' col-wknd':''}" style="position:relative"
+          data-empid="${mgr.id}" data-day="${d}" data-shift="${shift}" data-zone="${zone}"
+          data-dept="manager" onclick="openPopup(this,event)">`;
+        if (shift) {
+          h += `<span class="cell-s">${shift}</span>`;
+          if (zone) h += `<span class="cell-z" style="color:${zClr}">${zone}</span>`;
+        }
+        h += '</td>';
+      });
+      h += '</tr>';
+    });
+  }
   groups.forEach(({label, filter}) => {
     const grpEmps = employees.filter(filter);
     if (!grpEmps.length) return;
@@ -2054,7 +2101,7 @@ function openPopup(cell, evt) {
   const curZ   = cell.dataset.zone;
   const isRun  = cell.dataset.dept === 'Ранеры';
   const wishInfo = cell.dataset.wish || '';
-  popupEmpId = empId; popupDay = day;
+  popupEmpId = empId; popupDay = day; popupIsMgr = cell.dataset.dept === 'manager';
   const popup = document.getElementById('cell-popup');
   const shifts = isRun ? ['Д12','В',''] : ['У','Д12','В',''];
   let html = '';
@@ -2092,21 +2139,31 @@ document.addEventListener('click', () => {
 document.getElementById('cell-popup').addEventListener('click', e => e.stopPropagation());
 async function setShift(shift) {
   document.getElementById('cell-popup').classList.remove('open');
-  if (!schedData[popupEmpId]) schedData[popupEmpId] = { days:{}, zones:{} };
-  schedData[popupEmpId].days[popupDay] = shift;
+  if (popupIsMgr) {
+    if (!mgrSchedData[popupEmpId]) mgrSchedData[popupEmpId] = { days:{}, zones:{} };
+    mgrSchedData[popupEmpId].days[popupDay] = shift;
+  } else {
+    if (!schedData[popupEmpId]) schedData[popupEmpId] = { days:{}, zones:{} };
+    schedData[popupEmpId].days[popupDay] = shift;
+  }
   await saveSched();
   renderSchedGrid();
 }
 async function setZone(zone) {
   document.getElementById('cell-popup').classList.remove('open');
-  if (!schedData[popupEmpId]) schedData[popupEmpId] = { days:{}, zones:{} };
-  schedData[popupEmpId].zones[popupDay] = zone;
+  if (popupIsMgr) {
+    if (!mgrSchedData[popupEmpId]) mgrSchedData[popupEmpId] = { days:{}, zones:{} };
+    mgrSchedData[popupEmpId].zones[popupDay] = zone;
+  } else {
+    if (!schedData[popupEmpId]) schedData[popupEmpId] = { days:{}, zones:{} };
+    schedData[popupEmpId].zones[popupDay] = zone;
+  }
   await saveSched();
   renderSchedGrid();
 }
 async function saveSched() {
   try {
-    await db.collection('schedules').doc(periodKey).set({ cells: schedData });
+    await db.collection('schedules').doc(periodKey).set({ cells: schedData, managers: mgrSchedData });
   } catch(e) {
     console.error('saveSched:', e);
     toast('Ошибка сохранения');
@@ -2290,6 +2347,7 @@ function renderAdmin() {
     if (npStatus && np.published) npStatus.textContent = `✅ Опубликовано: ${np.month} ${np.year} (${np.periodStart}–${np.periodEnd})`;
   }
   document.getElementById('emp-count').textContent = employees.length;
+  renderManagerList();
   const list = document.getElementById('emp-list-admin');
   const ADMIN_GROUPS = [
     { label: 'ПРО',       filter: e => (e.sub || e.dept) === 'ПРО' },
@@ -2428,6 +2486,68 @@ async function removeEmp(id, name) {
     toast(`${name} удалён`);
   } catch(e) { toast('Ошибка удаления'); }
 }
+// ── МЕНЕДЖЕРЫ ──
+async function loadManagers() {
+  try {
+    const snap = await db.collection('managers').get();
+    managers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    renderManagerList();
+    renderSchedGrid();
+  } catch(e) { console.error('loadManagers:', e); }
+}
+
+async function addManager() {
+  const name = document.getElementById('nm-name').value.trim();
+  const pwd  = document.getElementById('nm-pwd').value.trim();
+  const tgid = document.getElementById('nm-tgid').value.trim();
+  if (!name) { toast('Введите имя менеджера'); return; }
+  if (!pwd)  { toast('Введите пароль'); return; }
+  if (managers.some(m => m.name === name)) { toast('Менеджер с таким именем уже есть'); return; }
+  try {
+    const data = { name, password: pwd, telegramId: tgid || null };
+    const ref = await db.collection('managers').add(data);
+    managers.push({ id: ref.id, ...data });
+    document.getElementById('nm-name').value = '';
+    document.getElementById('nm-pwd').value  = '';
+    document.getElementById('nm-tgid').value = '';
+    renderManagerList();
+    renderSchedGrid();
+    toast(`${name} добавлен как менеджер`);
+  } catch(e) { toast('Ошибка добавления менеджера'); }
+}
+
+async function removeManager(id, name) {
+  if (!confirm(`Удалить менеджера ${name}?`)) return;
+  try {
+    await db.collection('managers').doc(id).delete();
+    managers = managers.filter(m => m.id !== id);
+    renderManagerList();
+    renderSchedGrid();
+    toast(`${name} удалён`);
+  } catch(e) { toast('Ошибка удаления'); }
+}
+
+function renderManagerList() {
+  const el = document.getElementById('mgr-list-admin');
+  const cnt = document.getElementById('mgr-count');
+  if (cnt) cnt.textContent = managers.length;
+  if (!el) return;
+  if (!managers.length) {
+    el.innerHTML = '<div style="color:rgba(255,255,255,0.3);font-size:0.78rem;padding:0.5rem 0;">Нет менеджеров</div>';
+    return;
+  }
+  el.innerHTML = managers.map(m =>
+    `<div class="emp-list-row" style="display:flex;align-items:center;justify-content:space-between;padding:0.5rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.06);">
+      <div>
+        <span style="font-weight:600;font-size:0.88rem;">${m.name}</span>
+        <span style="color:rgba(255,255,255,0.35);font-size:0.72rem;margin-left:0.5rem;">••••</span>
+        ${m.telegramId ? `<span style="color:#8ab4f8;font-size:0.7rem;margin-left:0.5rem;">TG: ${m.telegramId}</span>` : ''}
+      </div>
+      <button onclick="removeManager('${m.id}','${m.name}')" style="background:rgba(245,64,41,0.15);border:1px solid rgba(245,64,41,0.3);color:#F54029;border-radius:6px;font-size:0.7rem;padding:0.2rem 0.5rem;cursor:pointer;">Удалить</button>
+    </div>`
+  ).join('');
+}
+
 // ── АЧ ИВКИ / ЗАДАНИЯ ──
 let _achEmpId = null;
 
@@ -3007,8 +3127,8 @@ async function editNote(id) {
 async function clearSched() {
   if (!confirm('Очистить всё расписание за этот период?')) return;
   try {
-    await db.collection('schedules').doc(periodKey).set({ cells: {} });
-    schedData = {};
+    await db.collection('schedules').doc(periodKey).set({ cells: {}, managers: {} });
+    schedData = {}; mgrSchedData = {};
     renderSchedGrid();
     toast('Расписание очищено');
   } catch(e) { toast('Ошибка'); }
@@ -3055,7 +3175,9 @@ async function moveEmp(id, dir) {
 function resetSchedListener() {
   if (unsubSched) { unsubSched(); unsubSched = null; }
   unsubSched = db.collection('schedules').doc(periodKey).onSnapshot(snap => {
-    schedData = snap.exists ? (snap.data().cells || {}) : {};
+    const sd = snap.exists ? snap.data() : {};
+    schedData    = sd.cells    || {};
+    mgrSchedData = sd.managers || {};
     if (document.getElementById('screen-manager').classList.contains('active') && isMgr) renderSchedGrid();
     if (document.getElementById('screen-emp-view').classList.contains('active') && curUser) renderEmpScheduleStrip();
   }, e => console.error('sched listener:', e));
