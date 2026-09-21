@@ -1486,7 +1486,7 @@ a { color: var(--gold); }
             <div class="adm-row">
               <div class="adm-f"><label>Имя</label><input id="nm-name" placeholder="Иван Иванов"></div>
               <div class="adm-f"><label>Email</label><input id="nm-email" type="email" placeholder="ivan@mail.ru"></div>
-              <div class="adm-f"><label>Пароль</label><input id="nm-pwd" type="password" maxlength="30" placeholder="пароль"></div>
+              <div class="adm-f"><label>ПИН-код</label><input id="nm-pwd" type="password" maxlength="30" placeholder="пин-код для входа"></div>
             </div>
             <div class="btn-row">
               <button class="btn-xs prim" onclick="addManager()" style="background:#F54029;">+ Добавить менеджера</button>
@@ -2506,7 +2506,7 @@ async function addManager() {
   const pwd   = document.getElementById('nm-pwd').value.trim();
   if (!name)  { toast('Введите имя менеджера'); return; }
   if (!email) { toast('Введите email менеджера'); return; }
-  if (!pwd)   { toast('Введите пароль'); return; }
+  if (!pwd)   { toast('Введите пин-код'); return; }
   if (managers.some(m => m.name === name)) { toast('Менеджер с таким именем уже есть'); return; }
   try {
     const data = { name, email, password: pwd, telegramId: null, vacationDays: [] };
@@ -2573,7 +2573,7 @@ function renderManagerList() {
         <input id="mpe-${m.id}" type="email" placeholder="новый email"
           style="flex:1.2;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);border-radius:6px;padding:0.28rem 0.45rem;color:#fff;font-size:0.7rem;outline:none;min-width:0;"
           onkeydown="if(event.key==='Enter')saveMgrCreds('${m.id}')">
-        <input id="mpp-${m.id}" type="password" placeholder="новый пароль"
+        <input id="mpp-${m.id}" type="password" placeholder="новый пин-код"
           style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.13);border-radius:6px;padding:0.28rem 0.45rem;color:#fff;font-size:0.7rem;outline:none;min-width:0;"
           onkeydown="if(event.key==='Enter')saveMgrCreds('${m.id}')">
         <button onclick="saveMgrCreds('${m.id}')" title="Сохранить"
