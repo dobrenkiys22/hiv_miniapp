@@ -1417,6 +1417,36 @@ a { color: var(--gold); }
               <button class="btn-xs red" onclick="clearExceptions()">Удалить исключения</button>
             </div>
           </div>
+          <!-- Shift norms -->
+          <div class="adm-section">
+            <h3>Нормы по сменам</h3>
+            <p style="font-size:0.75rem;color:var(--t-ghost);margin-bottom:0.8rem;line-height:1.4">Нужное количество людей на смене — цвет в расписании меняется (красный = мало, зелёный = норма)</p>
+            <div style="font-size:0.78rem;font-weight:600;color:var(--t-soft);margin-bottom:0.35rem">Зал — будни</div>
+            <div class="adm-row">
+              <div class="adm-f"><label>У</label><input id="norm-w-wd-U" type="number" min="0" max="20"></div>
+              <div class="adm-f"><label>Д12</label><input id="norm-w-wd-D12" type="number" min="0" max="20"></div>
+              <div class="adm-f"><label>В</label><input id="norm-w-wd-V" type="number" min="0" max="20"></div>
+            </div>
+            <div style="font-size:0.78rem;font-weight:600;color:var(--t-soft);margin-bottom:0.35rem">Зал — выходные (пт/сб/вс)</div>
+            <div class="adm-row">
+              <div class="adm-f"><label>У</label><input id="norm-w-we-U" type="number" min="0" max="20"></div>
+              <div class="adm-f"><label>Д12</label><input id="norm-w-we-D12" type="number" min="0" max="20"></div>
+              <div class="adm-f"><label>В</label><input id="norm-w-we-V" type="number" min="0" max="20"></div>
+            </div>
+            <div style="font-size:0.78rem;font-weight:600;color:var(--t-soft);margin-bottom:0.35rem;margin-top:0.3rem">Ранеры — будни</div>
+            <div class="adm-row">
+              <div class="adm-f"><label>Д12</label><input id="norm-r-wd-D12" type="number" min="0" max="20"></div>
+              <div class="adm-f"><label>В</label><input id="norm-r-wd-V" type="number" min="0" max="20"></div>
+            </div>
+            <div style="font-size:0.78rem;font-weight:600;color:var(--t-soft);margin-bottom:0.35rem">Ранеры — выходные (пт/сб/вс)</div>
+            <div class="adm-row">
+              <div class="adm-f"><label>Д12</label><input id="norm-r-we-D12" type="number" min="0" max="20"></div>
+              <div class="adm-f"><label>В</label><input id="norm-r-we-V" type="number" min="0" max="20"></div>
+            </div>
+            <div class="btn-row">
+              <button class="btn-xs prim" onclick="saveNorms()">Сохранить нормы</button>
+            </div>
+          </div>
           <!-- Next Period -->
           <div class="adm-section" id="next-period-card">
             <h3>📅 Следующий период</h3>
@@ -1599,6 +1629,7 @@ async function boot() {
     const cfgDoc = await db.collection('config').doc('main').get();
     if (cfgDoc.exists) {
       appCfg = cfgDoc.data();
+      if (appCfg.norms) applyNorms(appCfg.norms);
     } else {
       appCfg = {
         periodStart: 1, periodEnd: 15,
@@ -1940,10 +1971,22 @@ function renderMgrPeriodLbl() {
 /* ──────────────────────────────────────
    SCHEDULE GRID
    ────────────────────────────────────── */
-const NORMS = {
+let NORMS = {
   waiter: { weekday:{У:3,Д12:4,В:3}, weekend:{У:4,Д12:3,В:3} },
   runner: { weekday:{Д12:4,В:2},     weekend:{Д12:4,В:3} }
 };
+function applyNorms(n) {
+  NORMS = {
+    waiter: {
+      weekday: { У: n.wWdU ?? 3, Д12: n.wWdD12 ?? 4, В: n.wWdV ?? 3 },
+      weekend: { У: n.wWeU ?? 4, Д12: n.wWeD12 ?? 3, В: n.wWeV ?? 3 }
+    },
+    runner: {
+      weekday: { Д12: n.rWdD12 ?? 4, В: n.rWdV ?? 2 },
+      weekend: { Д12: n.rWeD12 ?? 4, В: n.rWeV ?? 3 }
+    }
+  };
+}
 function renderSchedGrid() {
   const { periodStart:s, periodEnd:e, month, year } = appCfg;
   const mn   = monthNum(month);
@@ -2350,6 +2393,19 @@ function renderAdmin() {
     const npStatus = document.getElementById('np-status');
     if (npStatus && np.published) npStatus.textContent = `✅ Опубликовано: ${np.month} ${np.year} (${np.periodStart}–${np.periodEnd})`;
   }
+  // Fill norm inputs from appCfg.norms (fallback to current NORMS)
+  const _n = appCfg.norms || {};
+  const _sv = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  _sv('norm-w-wd-U',   _n.wWdU   ?? NORMS.waiter.weekday.У);
+  _sv('norm-w-wd-D12', _n.wWdD12 ?? NORMS.waiter.weekday.Д12);
+  _sv('norm-w-wd-V',   _n.wWdV   ?? NORMS.waiter.weekday.В);
+  _sv('norm-w-we-U',   _n.wWeU   ?? NORMS.waiter.weekend.У);
+  _sv('norm-w-we-D12', _n.wWeD12 ?? NORMS.waiter.weekend.Д12);
+  _sv('norm-w-we-V',   _n.wWeV   ?? NORMS.waiter.weekend.В);
+  _sv('norm-r-wd-D12', _n.rWdD12 ?? NORMS.runner.weekday.Д12);
+  _sv('norm-r-wd-V',   _n.rWdV   ?? NORMS.runner.weekday.В);
+  _sv('norm-r-we-D12', _n.rWeD12 ?? NORMS.runner.weekend.Д12);
+  _sv('norm-r-we-V',   _n.rWeV   ?? NORMS.runner.weekend.В);
   document.getElementById('emp-count').textContent = employees.length;
   renderManagerList();
   const list = document.getElementById('emp-list-admin');
@@ -2426,6 +2482,22 @@ async function savePeriodCfg() {
     renderVacations();
     toast('Настройки сохранены');
   } catch(e) { toast('Ошибка сохранения'); }
+}
+async function saveNorms() {
+  const g = id => parseInt(document.getElementById(id)?.value) || 0;
+  const norms = {
+    wWdU: g('norm-w-wd-U'), wWdD12: g('norm-w-wd-D12'), wWdV: g('norm-w-wd-V'),
+    wWeU: g('norm-w-we-U'), wWeD12: g('norm-w-we-D12'), wWeV: g('norm-w-we-V'),
+    rWdD12: g('norm-r-wd-D12'), rWdV: g('norm-r-wd-V'),
+    rWeD12: g('norm-r-we-D12'), rWeV: g('norm-r-we-V'),
+  };
+  try {
+    await db.collection('config').doc('main').update({ norms });
+    appCfg.norms = norms;
+    applyNorms(norms);
+    renderSchedGrid();
+    toast('Нормы сохранены ✓');
+  } catch(e) { console.error(e); toast('Ошибка сохранения'); }
 }
 async function publishNextPeriod() {
   const month = document.getElementById('np-month').value.trim();
