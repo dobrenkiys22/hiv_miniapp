@@ -822,6 +822,35 @@ a { color: var(--gold); }
 }
 .sched-tbl tfoot .tot-cell { font-size: 0.55rem; line-height: 1.5; }
 .sched-tbl tfoot .tot-cell span { display: block; }
+/* Inline norm rows (inside tbody, under each group) */
+.sched-tbl .norm-row td {
+  background: var(--panel) !important;
+  border-top: 2px solid rgba(26,18,10,0.12) !important;
+  border-bottom: 2px solid rgba(26,18,10,0.12) !important;
+  text-align: center; padding: 3px 2px;
+}
+.sched-tbl .norm-row .tot-lbl {
+  position: sticky; left: 0; z-index: 3;
+  font-size: 0.6rem; font-weight: 600; color: var(--t-ghost);
+  text-align: left; padding-left: 0.5rem; letter-spacing: 0.05em;
+  text-transform: uppercase; background: var(--panel) !important;
+}
+.sched-tbl .norm-row .tot-cell { font-size: 0.55rem; line-height: 1.5; }
+.sched-tbl .norm-row .tot-cell span { display: block; }
+/* Shift count sticky-right column */
+.th-shifts {
+  position: sticky; right: 0; z-index: 10;
+  background: var(--panel) !important;
+  min-width: 34px; text-align: center;
+  border-left: 2px solid rgba(26,18,10,0.12) !important;
+}
+.td-shifts {
+  position: sticky; right: 0; z-index: 3;
+  background: var(--panel-2) !important;
+  text-align: center; font-size: 0.68rem; font-weight: 600;
+  color: var(--t-soft); min-width: 34px;
+  border-left: 2px solid rgba(26,18,10,0.08) !important;
+}
 .tot-u   { color: #2277cc; }
 .tot-d12 { color: #996600; }
 .tot-v   { color: #7744cc; }
@@ -1558,6 +1587,7 @@ a { color: var(--gold); }
    ────────────────────────────────────── */
 const ZONE_CLR = { 'бар':'#b6d7a8','печка':'#f6b26b','мангал':'#ea9999','лифт':'#9fc5e8' };
 const ZONES = ['бар','печка','мангал','лифт'];
+const RUNNER_ZONES = new Set(['лифт']); // зоны, при которых официант считается в статистике ранеров
 const WNDS = ['вс','пн','вт','ср','чт','пт','сб'];
 /* ──────────────────────────────────────
    STATE
@@ -1996,32 +2026,134 @@ function renderSchedGrid() {
     days.push({ d, name: WNDS[dt.getDay()], wknd: ['пт','сб','вс'].includes(WNDS[dt.getDay()]) });
   }
   const tbl = document.getElementById('sched-tbl');
+  // Helper: does employee have runner zone on day d?
+  const hasRunnerZone = (empId, d) => RUNNER_ZONES.has(schedData[empId]?.zones?.[d]);
+  // Helpers for coverage spans
+  function normSpan(actual, norm) {
+    if (norm === undefined) return '';
+    const cls = actual === 0 ? 'tot-neutral' : actual < norm ? 'tot-low' : actual > norm ? 'tot-over' : 'tot-ok';
+    return `<span class="${cls}" title="${actual} из ${norm}">${actual}/${norm}</span>`;
+  }
+  const waiters = employees.filter(e => e.dept !== 'Ранеры' && e.sub !== 'Ранеры');
+  const runners = employees.filter(e => e.dept === 'Ранеры' || e.sub === 'Ранеры');
+  // Helper to build a single employee row (shared between groups)
+  function empRow(emp) {
+    const es    = schedData[emp.id] || { days:{}, zones:{} };
+    const wish  = wishesArr.find(w => w.employeeId === emp.id);
+    const wOff    = new Set(wish?.offDays    || []);
+    const wStrict = new Set(wish?.strictDays || []);
+    const wShifts = wish?.dayShifts || {};
+    const vac   = new Set(emp.vacationDays  || []);
+    let row = '<tr>';
+    const noteTitle  = emp.managerNote ? `${emp.name}\n📝 ${emp.managerNote}` : emp.name;
+    const noteMarker = emp.managerNote ? ' <span style="color:var(--gold);font-size:0.5rem;vertical-align:top">●</span>' : '';
+    row += `<td class="td-name" title="${noteTitle}">${emp.name}${noteMarker}</td>`;
+    let shiftCount = 0;
+    days.forEach(({d,wknd}) => {
+      if (vac.has(d)) {
+        row += `<td class="cell cell-vacation${wknd?' col-wknd':''}" data-empid="${emp.id}" data-day="${d}" data-shift="" data-zone="" data-dept="${emp.dept}" onclick="openPopup(this,event)">`;
+        row += `<span class="cell-vac-s">О</span></td>`;
+        return;
+      }
+      const shift = es.days?.[d] || '';
+      const zone  = es.zones?.[d] || '';
+      if (shift) shiftCount++;
+      const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':shift==='Х'?'sh-X':'';
+      const zClr  = zone ? ZONE_CLR[zone] : '';
+      const isConflict = !!shift && wStrict.has(d);
+      const isSoftConf = !!shift && !wStrict.has(d) && wOff.has(d);
+      let wishCls = '';
+      if (!shift) {
+        if (wStrict.has(d)) wishCls = ' wish-strict';
+        else if (wOff.has(d)) wishCls = ' wish-soft';
+      }
+      const conflictCls = isConflict ? ' cell-conflict' : isSoftConf ? ' cell-soft-conflict' : '';
+      let wishTitle = '';
+      if (wStrict.has(d))   wishTitle = shift ? '⚠ Конфликт: просил выходной' : 'Просит: обязательно выходной';
+      else if (wOff.has(d)) wishTitle = shift ? '⚡ Просил желательно выходной' : 'Просит: желательно выходной';
+      else if (wShifts[d])  wishTitle = `Просит смену: ${wShifts[d]}`;
+      row += `<td class="cell ${shCls}${wishCls}${conflictCls}${wknd?' col-wknd':''}" style="position:relative"
+        data-empid="${emp.id}" data-day="${d}" data-shift="${shift}" data-zone="${zone}"
+        data-dept="${emp.dept}" data-wish="${wishTitle.replace(/"/g,'&quot;')}"
+        onclick="openPopup(this,event)">`;
+      if (isConflict) row += `<span class="conflict-icon">⚠</span>`;
+      if (shift) {
+        row += `<span class="cell-s">${shift}</span>`;
+        if (zone) row += `<span class="cell-z" style="color:${zClr}">${zone}</span>`;
+      } else if (wStrict.has(d)) {
+        row += `<span class="cell-s" style="font-size:0.55rem;color:rgba(200,60,80,0.7)">ВЫХОД</span>`;
+      } else if (wOff.has(d)) {
+        row += `<div class="wish-dot"></div>`;
+      }
+      row += '</td>';
+    });
+    row += `<td class="td-shifts">${shiftCount || ''}</td>`;
+    row += '</tr>';
+    return row;
+  }
+  // Norm row builder
+  function waiterNormRow() {
+    let row = '<tr class="norm-row">';
+    row += '<td class="tot-lbl">Зал</td>';
+    days.forEach(({d, wknd}) => {
+      const norms = NORMS.waiter[wknd ? 'weekend' : 'weekday'];
+      const c = {У:0,Д12:0,В:0};
+      waiters.forEach(emp => {
+        const vac = new Set(emp.vacationDays || []);
+        if (!vac.has(d) && !hasRunnerZone(emp.id, d)) {
+          const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++;
+        }
+      });
+      row += `<td class="tot-cell">${normSpan(c.У,norms.У)}<br>${normSpan(c.Д12,norms.Д12)}<br>${normSpan(c.В,norms.В)}</td>`;
+    });
+    row += '<td class="td-shifts"></td></tr>';
+    return row;
+  }
+  function runnerNormRow() {
+    let row = '<tr class="norm-row">';
+    row += '<td class="tot-lbl">Ранеры</td>';
+    days.forEach(({d, wknd}) => {
+      const norms = NORMS.runner[wknd ? 'weekend' : 'weekday'];
+      const c = {Д12:0,В:0};
+      runners.forEach(emp => {
+        const vac = new Set(emp.vacationDays || []);
+        if (!vac.has(d)) { const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++; }
+      });
+      // Официанты с зоной ранера тоже считаются
+      waiters.forEach(emp => {
+        const vac = new Set(emp.vacationDays || []);
+        if (!vac.has(d) && hasRunnerZone(emp.id, d)) {
+          const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++;
+        }
+      });
+      row += `<td class="tot-cell">${normSpan(c.Д12,norms.Д12)}<br>${normSpan(c.В,norms.В)}</td>`;
+    });
+    row += '<td class="td-shifts"></td></tr>';
+    return row;
+  }
   // Header
   let h = '<thead><tr>';
   h += '<th class="th-name">Сотрудник</th>';
   days.forEach(({d,name,wknd}) => {
     h += `<th style="${wknd?'color:rgba(160,80,0,0.8)':''}">${d}<br><span style="font-size:0.58em;font-weight:400;">${name}</span></th>`;
   });
+  h += '<th class="th-shifts">Смен</th>';
   h += '</tr></thead>';
-  // Body
-  const groups = [
-    { label:'— ПРО',       filter: e => e.sub==='ПРО' },
-    { label:'— Официанты', filter: e => e.sub==='Офики' },
-    { label:'— Ранеры',    filter: e => e.sub==='Ранеры' || (e.dept==='Ранеры' && !e.sub) },
-  ];
   h += '<tbody>';
   // ── Менеджеры (вверху) ──
   if (managers.length) {
-    h += `<tr class="grp-row"><td colspan="${days.length+1}" style="color:#F54029;">— Менеджеры</td></tr>`;
+    h += `<tr class="grp-row"><td colspan="${days.length+2}" style="color:#F54029;">— Менеджеры</td></tr>`;
     managers.forEach(mgr => {
       const ms = mgrSchedData[mgr.id] || { days:{}, zones:{} };
+      const mgrVacSet = new Set(mgr.vacationDays || []);
+      let shiftCount = 0;
       h += '<tr>';
       h += `<td class="td-name" style="font-weight:700;">${mgr.name}</td>`;
-      const mgrVacSet = new Set(mgr.vacationDays || []);
       days.forEach(({d, wknd}) => {
         const isVac = mgrVacSet.has(d);
         const shift = isVac ? 'В' : (ms.days?.[d] || '');
         const zone  = isVac ? '' : (ms.zones?.[d] || '');
+        if (!isVac && shift) shiftCount++;
         const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':shift==='Х'?'sh-X':'';
         const zClr  = zone ? ZONE_CLR[zone] : '';
         const vacCls = isVac ? ' cell-vacation' : '';
@@ -2036,105 +2168,32 @@ function renderSchedGrid() {
         }
         h += '</td>';
       });
+      h += `<td class="td-shifts">${shiftCount || ''}</td>`;
       h += '</tr>';
     });
   }
-  groups.forEach(({label, filter}) => {
+  // ── ПРО + Официанты ──
+  const waiterGroups = [
+    { label:'— ПРО',       filter: e => e.sub==='ПРО' },
+    { label:'— Официанты', filter: e => e.sub==='Офики' },
+  ];
+  waiterGroups.forEach(({label, filter}) => {
     const grpEmps = employees.filter(filter);
     if (!grpEmps.length) return;
-    h += `<tr class="grp-row"><td colspan="${days.length+1}">${label}</td></tr>`;
-    grpEmps.forEach(emp => {
-      const es    = schedData[emp.id] || { days:{}, zones:{} };
-      const wish  = wishesArr.find(w => w.employeeId === emp.id);
-      const wOff    = new Set(wish?.offDays    || []);
-      const wStrict = new Set(wish?.strictDays || []);
-      const wShifts = wish?.dayShifts || {};
-      const vac   = new Set(emp.vacationDays  || []);
-      h += '<tr>';
-      const noteTitle = emp.managerNote ? `${emp.name}\n📝 ${emp.managerNote}` : emp.name;
-      const noteMarker = emp.managerNote ? ' <span style="color:var(--gold);font-size:0.5rem;vertical-align:top">●</span>' : '';
-      h += `<td class="td-name" title="${noteTitle}">${emp.name}${noteMarker}</td>`;
-      days.forEach(({d,wknd}) => {
-        // Vacation cell
-        if (vac.has(d)) {
-          h += `<td class="cell cell-vacation${wknd?' col-wknd':''}" data-empid="${emp.id}" data-day="${d}" data-shift="" data-zone="" data-dept="${emp.dept}" onclick="openPopup(this,event)">`;
-          h += `<span class="cell-vac-s">О</span>`;
-          h += '</td>';
-          return;
-        }
-        const shift = es.days?.[d] || '';
-        const zone  = es.zones?.[d] || '';
-        const shCls = shift==='У'?'sh-U':shift==='Д12'?'sh-D12':shift==='В'?'sh-V':shift==='Х'?'sh-X':'';
-        const zClr  = zone ? ZONE_CLR[zone] : '';
-        // Conflict detection
-        const isConflict   = !!shift && wStrict.has(d);
-        const isSoftConf   = !!shift && !wStrict.has(d) && wOff.has(d);
-        let wishCls = '';
-        if (!shift) {
-          if (wStrict.has(d)) wishCls = ' wish-strict';
-          else if (wOff.has(d)) wishCls = ' wish-soft';
-        }
-        const conflictCls = isConflict ? ' cell-conflict' : isSoftConf ? ' cell-soft-conflict' : '';
-        // Build wish info for popup title
-        let wishTitle = '';
-        if (wStrict.has(d))   wishTitle = shift ? '⚠ Конфликт: просил выходной' : 'Просит: обязательно выходной';
-        else if (wOff.has(d)) wishTitle = shift ? '⚡ Просил желательно выходной' : 'Просит: желательно выходной';
-        else if (wShifts[d])  wishTitle = `Просит смену: ${wShifts[d]}`;
-        h += `<td class="cell ${shCls}${wishCls}${conflictCls}${wknd?' col-wknd':''}" style="position:relative"
-          data-empid="${emp.id}" data-day="${d}" data-shift="${shift}" data-zone="${zone}"
-          data-dept="${emp.dept}" data-wish="${wishTitle.replace(/"/g,'&quot;')}"
-          onclick="openPopup(this,event)">`;
-        if (isConflict) h += `<span class="conflict-icon">⚠</span>`;
-        if (shift) {
-          h += `<span class="cell-s">${shift}</span>`;
-          if (zone) h += `<span class="cell-z" style="color:${zClr}">${zone}</span>`;
-        } else if (wStrict.has(d)) {
-          h += `<span class="cell-s" style="font-size:0.55rem;color:rgba(200,60,80,0.7)">ВЫХОД</span>`;
-        } else if (wOff.has(d)) {
-          h += `<div class="wish-dot"></div>`;
-        }
-        h += '</td>';
-      });
-      h += '</tr>';
-    });
+    h += `<tr class="grp-row"><td colspan="${days.length+2}">${label}</td></tr>`;
+    grpEmps.forEach(emp => { h += empRow(emp); });
   });
-  h += '</tbody>';
-  // ── Coverage norms footer ──
-  const waiters = employees.filter(e => e.dept !== 'Ранеры' && e.sub !== 'Ранеры');
-  const runners = employees.filter(e => e.dept === 'Ранеры' || e.sub === 'Ранеры');
-  function normSpan(actual, norm) {
-    if (norm === undefined) return '';
-    const cls = actual === 0 ? 'tot-neutral' : actual < norm ? 'tot-low' : actual > norm ? 'tot-over' : 'tot-ok';
-    return `<span class="${cls}" title="${actual} из ${norm}">${actual}/${norm}</span>`;
+  // Норма — Зал (после официантов)
+  h += waiterNormRow();
+  // ── Ранеры ──
+  const runnerEmps = employees.filter(e => e.sub==='Ранеры' || (e.dept==='Ранеры' && !e.sub));
+  if (runnerEmps.length) {
+    h += `<tr class="grp-row"><td colspan="${days.length+2}">— Ранеры</td></tr>`;
+    runnerEmps.forEach(emp => { h += empRow(emp); });
   }
-  h += '<tfoot>';
-  // Зал row
-  h += '<tr>';
-  h += '<td class="td-name tot-lbl">Зал</td>';
-  days.forEach(({d, wknd}) => {
-    const norms = NORMS.waiter[wknd ? 'weekend' : 'weekday'];
-    const c = {У:0,Д12:0,В:0};
-    waiters.forEach(emp => {
-      const vac = new Set(emp.vacationDays || []);
-      if (!vac.has(d)) { const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++; }
-    });
-    h += `<td class="tot-cell">${normSpan(c.У,norms.У)}<br>${normSpan(c.Д12,norms.Д12)}<br>${normSpan(c.В,norms.В)}</td>`;
-  });
-  h += '</tr>';
-  // Ранеры row
-  h += '<tr>';
-  h += '<td class="td-name tot-lbl">Ранеры</td>';
-  days.forEach(({d, wknd}) => {
-    const norms = NORMS.runner[wknd ? 'weekend' : 'weekday'];
-    const c = {Д12:0,В:0};
-    runners.forEach(emp => {
-      const vac = new Set(emp.vacationDays || []);
-      if (!vac.has(d)) { const sh = schedData[emp.id]?.days?.[d]; if (sh && c[sh]!==undefined) c[sh]++; }
-    });
-    h += `<td class="tot-cell">${normSpan(c.Д12,norms.Д12)}<br>${normSpan(c.В,norms.В)}</td>`;
-  });
-  h += '</tr>';
-  h += '</tfoot>';
+  // Норма — Ранеры (после ранеров)
+  h += runnerNormRow();
+  h += '</tbody>';
   tbl.innerHTML = h;
 }
 /* ──────────────────────────────────────
@@ -2176,13 +2235,18 @@ function openPopup(cell, evt) {
   html += `<span class="pop-z clr-z" onclick="setZone('')">✕</span>`;
   html += '</div>';
   popup.innerHTML = html;
-  // Position
+  // Position — справа от ячейки, чтобы не перекрывать её
   const r = cell.getBoundingClientRect();
-  const pw = 156;
-  let left = r.left;
-  if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+  const pw = 160;
+  const ph = 240;
+  let left = r.right + 4;
+  if (left + pw > window.innerWidth - 8) left = r.left - pw - 4;
+  if (left < 4) left = 4;
+  let top = r.top;
+  if (top + ph > window.innerHeight - 8) top = window.innerHeight - ph - 8;
+  if (top < 4) top = 4;
   popup.style.left = left + 'px';
-  popup.style.top  = Math.min(r.bottom + 4, window.innerHeight - 220) + 'px';
+  popup.style.top  = top + 'px';
   popup.classList.add('open');
 }
 document.addEventListener('click', () => {
