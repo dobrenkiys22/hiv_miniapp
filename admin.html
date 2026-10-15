@@ -2144,12 +2144,17 @@ function openPopup(cell, evt) {
   evt.stopPropagation();
   const empId  = cell.dataset.empid;
   const day    = parseInt(cell.dataset.day);
+  const popup  = document.getElementById('cell-popup');
+  // Toggle: повторный клик по той же ячейке закрывает попап
+  if (popup.classList.contains('open') && popupEmpId === empId && popupDay === day) {
+    popup.classList.remove('open');
+    return;
+  }
   const curSh  = cell.dataset.shift;
   const curZ   = cell.dataset.zone;
   const isRun  = cell.dataset.dept === 'Ранеры';
   const wishInfo = cell.dataset.wish || '';
   popupEmpId = empId; popupDay = day; popupIsMgr = cell.dataset.dept === 'manager';
-  const popup = document.getElementById('cell-popup');
   const shifts = popupIsMgr ? ['Х','У','Д12','В',''] : isRun ? ['Д12','В',''] : ['У','Д12','В',''];
   let html = '';
   // Show what employee wished for (if any)
